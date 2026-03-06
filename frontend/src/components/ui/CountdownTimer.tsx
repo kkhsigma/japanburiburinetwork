@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { differenceInDays, differenceInHours, differenceInMinutes, isPast } from "date-fns";
+import {
+  differenceInDays,
+  differenceInHours,
+  differenceInMinutes,
+  isPast,
+} from "date-fns";
 import { Clock } from "lucide-react";
 
 interface CountdownTimerProps {
@@ -10,7 +15,11 @@ interface CountdownTimerProps {
   className?: string;
 }
 
-export function CountdownTimer({ targetDate, label, className = "" }: CountdownTimerProps) {
+export function CountdownTimer({
+  targetDate,
+  label,
+  className = "",
+}: CountdownTimerProps) {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -21,9 +30,9 @@ export function CountdownTimer({ targetDate, label, className = "" }: CountdownT
   if (isPast(targetDate)) {
     return (
       <div className={`flex items-center gap-2 ${className}`}>
-        <Clock size={14} className="text-alert-red" />
-        <span className="text-sm text-alert-red font-medium">Effective</span>
-        <span className="text-xs text-gray-400">{label}</span>
+        <Clock size={14} className="text-critical" />
+        <span className="text-sm text-critical font-medium">Effective</span>
+        <span className="text-xs text-text-muted">{label}</span>
       </div>
     );
   }
@@ -35,24 +44,44 @@ export function CountdownTimer({ targetDate, label, className = "" }: CountdownT
   const isUrgent = days < 7;
 
   return (
-    <div className={`${className}`}>
-      <div className="flex items-center gap-2 mb-1">
-        <Clock size={14} className={isUrgent ? "text-alert-red" : "text-alert-yellow"} />
-        <span className="text-xs text-gray-400">{label}</span>
+    <div className={className}>
+      <div className="flex items-center gap-2 mb-1.5">
+        <Clock
+          size={14}
+          className={isUrgent ? "text-critical" : "text-signal"}
+        />
+        <span className="text-xs text-text-muted">{label}</span>
       </div>
       <div className="flex items-baseline gap-1">
-        <span className={`text-2xl font-mono font-bold ${isUrgent ? "text-alert-red" : "text-white"}`}>
+        {/* Days */}
+        <span
+          className={`text-2xl font-mono font-bold tracking-tight ${
+            isUrgent ? "text-critical" : "text-text-primary"
+          }`}
+        >
           {days}
         </span>
-        <span className="text-xs text-gray-400 mr-2">days</span>
-        <span className={`text-lg font-mono font-bold ${isUrgent ? "text-alert-red" : "text-white"}`}>
+        <span className="text-xs text-text-muted mr-2">days</span>
+
+        {/* Hours */}
+        <span
+          className={`text-lg font-mono font-bold tracking-tight ${
+            isUrgent ? "text-critical" : "text-text-primary"
+          }`}
+        >
           {hours}
         </span>
-        <span className="text-xs text-gray-400 mr-2">hrs</span>
-        <span className={`text-lg font-mono font-bold ${isUrgent ? "text-alert-red" : "text-white"}`}>
+        <span className="text-xs text-text-muted mr-2">hrs</span>
+
+        {/* Minutes */}
+        <span
+          className={`text-lg font-mono font-bold tracking-tight ${
+            isUrgent ? "text-critical" : "text-text-primary"
+          }`}
+        >
           {minutes}
         </span>
-        <span className="text-xs text-gray-400">min</span>
+        <span className="text-xs text-text-muted">min</span>
       </div>
     </div>
   );

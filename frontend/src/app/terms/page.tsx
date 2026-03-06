@@ -26,7 +26,7 @@ export default function TermsPage() {
               1. Acceptance of Terms
             </h2>
             <p className="text-sm text-gray-300 leading-relaxed">
-              By accessing or using the Japan Botanical Network (JBN) service, you agree to be bound
+              By accessing or using the Japan Buriburi Network (JBN) service, you agree to be bound
               by these Terms of Service. If you do not agree to these terms, you may not use the service.
               JBN is intended for individuals who are 20 years of age or older under Japanese law.
             </p>

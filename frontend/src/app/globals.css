@@ -2,36 +2,128 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =========================================
+   JBN Design System — CSS Custom Properties
+   ========================================= */
+
 :root {
-  --background: #0a1628;
-  --foreground: #f0f0f0;
+  /* --- Base palette --- */
+  --color-bg-base: #06090f;
+  --color-bg-raised: #0c1220;
+  --color-bg-elevated: #111827;
+  --color-bg-overlay: #1a2332;
+
+  /* --- Accent --- */
+  --color-accent: #1a9a8a;
+  --color-accent-hover: #1fb5a3;
+  --color-signal: #d4a72d;
+  --color-critical: #b91c1c;
+
+  /* --- Text --- */
+  --color-text-primary: #e2e8f0;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+
+  /* --- Border --- */
+  --color-border: #1e293b;
+  --color-border-subtle: #151d2e;
+  --color-border-hover: #2d3a50;
+
+  /* --- Focus --- */
+  --color-focus-ring: rgba(26, 154, 138, 0.4);
+
+  /* --- Foreground/Background shorthand --- */
+  --background: var(--color-bg-base);
+  --foreground: var(--color-text-primary);
 }
+
+/* =========================================
+   Base styles
+   ========================================= */
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
 }
 
-/* Custom scrollbar */
+/* =========================================
+   Selection highlight
+   ========================================= */
+
+::selection {
+  background: rgba(26, 154, 138, 0.25);
+  color: #e2e8f0;
+}
+
+::-moz-selection {
+  background: rgba(26, 154, 138, 0.25);
+  color: #e2e8f0;
+}
+
+/* =========================================
+   Custom scrollbar
+   ========================================= */
+
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f1f38;
+  background: var(--color-bg-raised);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2d4466;
+  background: var(--color-border);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4d6585;
+  background: var(--color-border-hover);
 }
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) var(--color-bg-raised);
+}
+
+/* =========================================
+   Focus ring
+   ========================================= */
+
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* =========================================
+   Typography rhythm
+   ========================================= */
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+p {
+  color: var(--color-text-secondary);
+}
+
+code, pre {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+
+/* =========================================
+   Utility classes
+   ========================================= */
 
 @layer utilities {
   .text-balance {
@@ -40,5 +132,33 @@ body {
 
   .safe-area-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+@layer components {
+  /* --- Surface layers --- */
+  .surface-base {
+    background-color: var(--color-bg-base);
+  }
+
+  .surface-raised {
+    background-color: var(--color-bg-raised);
+  }
+
+  .surface-elevated {
+    background-color: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+  }
+
+  .surface-overlay {
+    background-color: var(--color-bg-overlay);
+    border: 1px solid var(--color-border);
+    backdrop-filter: blur(8px);
+  }
+
+  /* --- Focus ring utility --- */
+  .focus-ring {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-focus-ring);
   }
 }

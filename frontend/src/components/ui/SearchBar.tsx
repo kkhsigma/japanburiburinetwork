@@ -9,8 +9,13 @@ interface SearchBarProps {
   className?: string;
 }
 
-export function SearchBar({ placeholder = "Search compounds, alerts, products...", onSearch, className = "" }: SearchBarProps) {
+export function SearchBar({
+  placeholder = "Search compounds, alerts, products...",
+  onSearch,
+  className = "",
+}: SearchBarProps) {
   const [query, setQuery] = useState("");
+  const [isFocused, setIsFocused] = useState(false);
 
   const handleChange = (value: string) => {
     setQuery(value);
@@ -19,24 +24,36 @@ export function SearchBar({ placeholder = "Search compounds, alerts, products...
 
   return (
     <div className={`relative ${className}`}>
-      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+      <Search
+        size={16}
+        className={`absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-150 ${
+          isFocused ? "text-accent" : "text-text-muted"
+        }`}
+      />
       <input
         type="text"
         value={query}
         onChange={(e) => handleChange(e.target.value)}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
         placeholder={placeholder}
-        className="
-          w-full pl-9 pr-9 py-2.5 rounded-xl
-          bg-navy-700 border border-navy-600
-          text-sm text-white placeholder-gray-500
-          focus:outline-none focus:ring-2 focus:ring-accent-green/50 focus:border-accent-green/50
-          transition-colors
-        "
+        className={`
+          w-full pl-10 pr-10 py-2.5 rounded-xl
+          bg-surface-elevated border
+          text-sm text-text-primary placeholder-text-muted
+          transition-all duration-200
+          focus:outline-none
+          ${
+            isFocused
+              ? "border-accent/40 shadow-[0_0_0_3px_rgba(26,154,138,0.1)]"
+              : "border-border hover:border-border-hover"
+          }
+        `}
       />
       {query && (
         <button
           onClick={() => handleChange("")}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors duration-150"
         >
           <X size={14} />
         </button>

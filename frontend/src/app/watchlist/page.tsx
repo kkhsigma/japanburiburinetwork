@@ -1,22 +1,35 @@
 "use client";
 
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { AppShell } from "@/components/layout/AppShell";
 import { EntityCard } from "@/components/watchlist/EntityCard";
-import { Card } from "@/components/ui/Card";
-import { SearchBar } from "@/components/ui/SearchBar";
-import { Button } from "@/components/ui/Button";
 import { mockCompounds, mockWatchlist, mockWatchlistHighlights } from "@/lib/mock-data";
 import { useWatchlist, useWatchlistHighlights, useAddToWatchlist } from "@/hooks/useWatchlist";
 import { useCompounds } from "@/hooks/useCompounds";
-import { Plus, Eye, TrendingUp } from "lucide-react";
+import { Eye, Plus, TrendingUp, X, Search } from "lucide-react";
 import { format } from "date-fns";
+
+const containerVariants = {
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: 0.06, delayChildren: 0.1 },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.4, ease: [0.25, 0.4, 0.25, 1] as const },
+  },
+};
 
 export default function WatchlistPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // React Query hooks — fall back to mock data while backend is unavailable
   const watchlistQuery = useWatchlist();
   const highlightsQuery = useWatchlistHighlights();
   const compoundsQuery = useCompounds();
@@ -35,117 +48,167 @@ export default function WatchlistPage() {
     .filter((w) => w.compound);
 
   const unwatchedCompounds = compoundsData.filter(
-    (c) => !watchlistData.some((w) => w.entity_id === c.id && w.entity_type === "compound")
+    (c) =>
+      !watchlistData.some(
+        (w) => w.entity_id === c.id && w.entity_type === "compound"
+      )
   );
 
   const filteredUnwatched = searchQuery
     ? unwatchedCompounds.filter(
         (c) =>
           c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.aliases.some((a) => a.toLowerCase().includes(searchQuery.toLowerCase()))
+          c.aliases.some((a) =>
+            a.toLowerCase().includes(searchQuery.toLowerCase())
+          )
       )
     : unwatchedCompounds;
 
   return (
     <AppShell>
-      <div className="px-4 py-6 max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+      <div className="px-6 py-8 max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold text-white">Watchlist</h1>
-            <p className="text-xs text-gray-400">Personal compliance monitoring</p>
+            <div className="flex items-center gap-3 mb-1">
+              <Eye size={20} className="text-[#1a9a8a]" />
+              <h1 className="text-2xl font-bold text-[#e2e8f0]">ウォッチリスト</h1>
+            </div>
+            <p className="text-sm text-[#64748b]">
+              コンプライアンス監視
+            </p>
           </div>
-          <Button
-            size="sm"
+          <button
             onClick={() => setShowAddForm(!showAddForm)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-[#1a9a8a]/10 border border-[#1a9a8a]/30 text-[#1a9a8a] hover:bg-[#1a9a8a]/20 transition-colors"
           >
-            <Plus size={14} className="mr-1" />
-            Add
-          </Button>
+            {showAddForm ? <X size={14} /> : <Plus size={14} />}
+            {showAddForm ? "閉じる" : "ウォッチリストに追加"}
+          </button>
         </div>
 
-        {/* Highlights */}
-        {highlightsData.length > 0 && (
-          <section className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <TrendingUp size={14} className="text-accent-green" />
-              <h2 className="text-sm font-semibold text-white">Recent Changes</h2>
+        {/* Add form */}
+        {showAddForm && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-6 rounded-xl border border-[#1e293b] bg-[#0c1220] p-5 overflow-hidden"
+          >
+            <h3 className="text-sm font-semibold text-[#e2e8f0] mb-3">
+              成分をウォッチリストに追加
+            </h3>
+            <div className="relative mb-4">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748b]"
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="追加する成分を検索..."
+                className="w-full pl-9 pr-4 py-2.5 rounded-lg text-sm bg-[#111827] border border-[#1e293b] text-[#e2e8f0] placeholder-[#64748b] focus:outline-none focus:ring-1 focus:ring-[#1a9a8a]/50 transition-colors"
+              />
             </div>
-            <div className="space-y-2">
-              {highlightsData.map((h, i) => (
-                <Card key={i} className="p-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-white">{h.entity_name}</span>
-                    <span className="text-xs text-accent-green">{h.change}</span>
-                  </div>
-                  <span className="text-2xs text-gray-500">
-                    {format(new Date(h.changed_at), "MMM d")}
-                  </span>
-                </Card>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-64 overflow-y-auto">
+              {filteredUnwatched.map((compound) => (
+                <button
+                  key={compound.id}
+                  className="p-3 rounded-lg bg-[#111827] border border-[#1e293b] text-left hover:border-[#1a9a8a]/30 transition-colors"
+                  onClick={() => {
+                    addMutation.mutate({
+                      entity_type: "compound",
+                      entity_id: compound.id,
+                      entity_name: compound.name,
+                      notification_enabled: true,
+                    });
+                  }}
+                >
+                  <p className="text-sm font-medium text-[#e2e8f0]">
+                    {compound.name}
+                  </p>
+                  {compound.aliases[0] && (
+                    <p className="text-[11px] text-[#64748b] mt-0.5">
+                      {compound.aliases[0]}
+                    </p>
+                  )}
+                </button>
               ))}
             </div>
-          </section>
+          </motion.div>
         )}
 
-        {/* Add to watchlist */}
-        {showAddForm && (
-          <section className="mb-6">
-            <Card className="p-4">
-              <h3 className="text-sm font-semibold text-white mb-3">Add to Watchlist</h3>
-              <SearchBar
-                placeholder="Search compounds to add..."
-                onSearch={setSearchQuery}
-                className="mb-3"
-              />
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
-                {filteredUnwatched.map((compound) => (
-                  <button
-                    key={compound.id}
-                    className="p-3 bg-navy-600 rounded-lg text-left hover:bg-navy-500 transition-colors"
-                    onClick={() => {
-                      addMutation.mutate({
-                        entity_type: "compound",
-                        entity_id: compound.id,
-                        entity_name: compound.name,
-                        notification_enabled: true,
-                      });
-                    }}
-                  >
-                    <p className="text-sm font-medium text-white">{compound.name}</p>
-                    <p className="text-2xs text-gray-400">{compound.aliases[0]}</p>
-                  </button>
-                ))}
-              </div>
-            </Card>
-          </section>
+        {/* Recent Changes */}
+        {highlightsData.length > 0 && (
+          <div className="mb-6 rounded-xl border border-[#1e293b] bg-[#0c1220] overflow-hidden">
+            <div className="flex items-center gap-2.5 px-5 py-4 border-b border-[#1e293b]">
+              <TrendingUp size={16} className="text-[#1a9a8a]" />
+              <h2 className="text-sm font-semibold text-[#e2e8f0]">
+                最近の変更
+              </h2>
+            </div>
+            <div className="p-4 space-y-2">
+              {highlightsData.map((h, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-3 rounded-lg border border-[#1e293b] bg-[#111827]"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-[#e2e8f0]">
+                      {h.entity_name}
+                    </span>
+                    <span className="text-xs text-[#1a9a8a] font-medium">
+                      {h.change}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-[#64748b] font-mono">
+                    {format(new Date(h.changed_at), "MMM d")}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
-        {/* Watched entities grid */}
-        <section>
-          <div className="flex items-center gap-2 mb-3">
-            <Eye size={14} className="text-gray-400" />
-            <h2 className="text-sm font-semibold text-white">
-              Watching ({watchedCompounds.length})
+        {/* Watched entities */}
+        <div className="rounded-xl border border-[#1e293b] bg-[#0c1220] overflow-hidden">
+          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-[#1e293b]">
+            <Eye size={16} className="text-[#64748b]" />
+            <h2 className="text-sm font-semibold text-[#e2e8f0]">
+              監視中 ({watchedCompounds.length})
             </h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {watchedCompounds.map(({ watchEntry, compound }) => (
-              <EntityCard
-                key={watchEntry.id}
-                compound={compound!}
-                isWatched
-                notificationEnabled={watchEntry.notification_enabled}
-              />
-            ))}
+          <div className="p-4">
+            {watchedCompounds.length > 0 ? (
+              <motion.div
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+              >
+                {watchedCompounds.map(({ watchEntry, compound }) => (
+                  <motion.div key={watchEntry.id} variants={itemVariants}>
+                    <EntityCard
+                      compound={compound!}
+                      isWatched
+                      notificationEnabled={watchEntry.notification_enabled}
+                    />
+                  </motion.div>
+                ))}
+              </motion.div>
+            ) : (
+              <div className="text-center py-12">
+                <p className="text-[#64748b] text-sm">
+                  ウォッチリストにはまだ成分がありません。
+                </p>
+                <p className="text-xs text-[#64748b]/70 mt-1">
+                  成分を追加して規制変更を追跡しましょう。
+                </p>
+              </div>
+            )}
           </div>
-          {watchedCompounds.length === 0 && (
-            <Card className="p-8 text-center">
-              <p className="text-gray-500">No compounds in your watchlist yet.</p>
-              <p className="text-xs text-gray-600 mt-1">
-                Add compounds to track regulatory changes.
-              </p>
-            </Card>
-          )}
-        </section>
+        </div>
       </div>
     </AppShell>
   );

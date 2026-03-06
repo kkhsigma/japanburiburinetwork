@@ -1,6 +1,7 @@
 "use client";
 
 import { DiffType } from "@/types";
+import { Minus, Plus } from "lucide-react";
 
 interface DiffViewProps {
   before: string;
@@ -18,30 +19,37 @@ const diffTypeLabels: Record<DiffType, string> = {
 
 export function DiffView({ before, after, diffType, className = "" }: DiffViewProps) {
   return (
-    <div className={`rounded-lg overflow-hidden border border-navy-600 ${className}`}>
-      <div className="px-3 py-1.5 bg-navy-600 flex items-center justify-between">
-        <span className="text-xs font-medium text-gray-300">Semantic Diff</span>
-        <span className="text-2xs text-gray-400 bg-navy-700 px-2 py-0.5 rounded">
+    <div
+      className={`rounded-lg overflow-hidden border border-border ${className}`}
+    >
+      {/* Header */}
+      <div className="px-3 py-2 bg-surface-overlay flex items-center justify-between">
+        <span className="text-xs font-medium text-text-secondary">
+          Semantic Diff
+        </span>
+        <span className="text-2xs text-text-muted bg-surface-elevated px-2 py-0.5 rounded-full border border-border">
           {diffTypeLabels[diffType]}
         </span>
       </div>
-      <div className="divide-y divide-navy-600">
+
+      {/* Diff lines */}
+      <div className="divide-y divide-border">
         {before && (
           <div className="flex">
-            <div className="w-8 flex-shrink-0 bg-red-900/30 flex items-center justify-center text-red-400 text-xs font-mono">
-              -
+            <div className="w-8 flex-shrink-0 bg-red-900/15 flex items-center justify-center">
+              <Minus size={12} className="text-red-400" />
             </div>
-            <div className="flex-1 px-3 py-2 bg-red-900/10 text-red-300 text-sm font-mono">
+            <div className="flex-1 px-3 py-2 bg-red-900/5 text-red-300 text-sm font-mono">
               {before}
             </div>
           </div>
         )}
         {after && (
           <div className="flex">
-            <div className="w-8 flex-shrink-0 bg-green-900/30 flex items-center justify-center text-green-400 text-xs font-mono">
-              +
+            <div className="w-8 flex-shrink-0 bg-emerald-900/15 flex items-center justify-center">
+              <Plus size={12} className="text-emerald-400" />
             </div>
-            <div className="flex-1 px-3 py-2 bg-green-900/10 text-green-300 text-sm font-mono">
+            <div className="flex-1 px-3 py-2 bg-emerald-900/5 text-emerald-300 text-sm font-mono">
               {after}
             </div>
           </div>

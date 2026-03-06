@@ -35,14 +35,14 @@ export function AgeGate() {
           <span className="text-2xl font-bold text-accent-green">JBN</span>
         </div>
 
-        <h2 className="text-lg font-bold text-white mb-2">Age Verification</h2>
-        <p className="text-sm text-gray-400 mb-1">Japan Botanical Network</p>
+        <h2 className="text-lg font-bold text-white mb-2">年齢確認</h2>
+        <p className="text-sm text-gray-400 mb-1">Japan Buriburi Network</p>
         <p className="text-sm text-gray-300 mt-4 mb-6">
-          Are you 20 years or older?
+          あなたは20歳以上ですか？
         </p>
         <p className="text-xs text-gray-500 mb-6">
-          This service contains regulatory information about controlled and designated
-          substances in Japan. You must be 20 years or older to access this content.
+          本サービスは、日本における規制薬物・指定薬物に関する規制情報を含んでいます。
+          このコンテンツにアクセスするには20歳以上である必要があります。
         </p>
 
         <div className="flex gap-3">
@@ -51,23 +51,23 @@ export function AgeGate() {
             className="flex-1"
             onClick={handleNo}
           >
-            No, I am under 20
+            いいえ、20歳未満です
           </Button>
           <Button
             variant="primary"
             className="flex-1"
             onClick={handleYes}
           >
-            Yes, I am 20+
+            はい、20歳以上です
           </Button>
         </div>
 
         <div className="mt-4 flex justify-center gap-4 text-2xs text-gray-600">
           <a href="/terms" className="hover:text-gray-400 transition-colors">
-            Terms of Service
+            利用規約
           </a>
           <a href="/privacy" className="hover:text-gray-400 transition-colors">
-            Privacy Policy
+            プライバシーポリシー
           </a>
         </div>
       </div>

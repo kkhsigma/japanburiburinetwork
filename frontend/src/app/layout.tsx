@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { QueryProvider } from "@/lib/query-provider";
-import { AgeGate } from "@/components/ui/AgeGate";
-import { DisclaimerBanner } from "@/components/ui/DisclaimerBanner";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -17,8 +15,9 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "JBN - Japan Botanical Network",
-  description: "Regulatory Intelligence System for the Japanese cannabinoid market",
+  title: "JBN - Japan Buriburi Network",
+  description:
+    "日本のカンナビノイド市場向け規制インテリジェンスプラットフォーム",
 };
 
 export default function RootLayout({
@@ -27,14 +26,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="ja">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-navy text-white min-h-screen`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#06090f] text-[#e2e8f0] min-h-screen`}
       >
         <QueryProvider>
-          <AgeGate />
           {children}
-          <DisclaimerBanner />
         </QueryProvider>
       </body>
     </html>
