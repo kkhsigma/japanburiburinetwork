@@ -1,6 +1,6 @@
 {
   "name": "jbn-backend",
-  "version": "0.1.0",
+  "version": "1.2.0",
   "description": "JBN (Japan Botanical Network) Backend - Regulatory Intelligence System",
   "private": true,
   "scripts": {
