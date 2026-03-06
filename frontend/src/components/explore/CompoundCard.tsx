@@ -29,8 +29,10 @@ const RISK_CONFIG: Record<RiskLevel, { label: string; color: string; dotColor: s
 };
 
 export function CompoundCard({ compound }: CompoundCardProps) {
-  const status = STATUS_CONFIG[compound.legal_status_japan];
-  const risk = RISK_CONFIG[compound.risk_level];
+  const statusKey = compound.legal_status_japan?.toLowerCase() as LegalStatus;
+  const riskKey = compound.risk_level?.toLowerCase() as RiskLevel;
+  const status = STATUS_CONFIG[statusKey] ?? STATUS_CONFIG.unknown;
+  const risk = RISK_CONFIG[riskKey] ?? RISK_CONFIG.medium;
 
   return (
     <Link href={`/explore/compounds/${compound.id}`}>

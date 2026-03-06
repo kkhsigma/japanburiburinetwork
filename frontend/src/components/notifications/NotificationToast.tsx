@@ -49,7 +49,15 @@ export function NotificationToast() {
   const notifications = useNotificationStore((s) => s.notifications);
   const markRead = useNotificationStore((s) => s.markRead);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
+  const [seenIds, setSeenIds] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const stored = localStorage.getItem("jbn-seen-toast-ids");
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
 
   // Track new notifications and show them as toasts
   useEffect(() => {
@@ -61,6 +69,9 @@ export function NotificationToast() {
       setSeenIds((prev) => {
         const next = new Set(prev);
         newNotifications.forEach((n) => next.add(n.id));
+        try {
+          localStorage.setItem("jbn-seen-toast-ids", JSON.stringify(Array.from(next)));
+        } catch {}
         return next;
       });
 

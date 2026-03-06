@@ -2,6 +2,9 @@
 // JBN Type Definitions — Shared across stores, hooks, and API
 // ============================================================
 
+// --- Black Hole Transition State Machine ---
+export type TransitionState = "idle" | "collapsing" | "singularity" | "zoom" | "navigate";
+
 // --- Legal State Machine (8 states) ---
 export type LegalStatus =
   | 'unknown'
