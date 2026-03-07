@@ -1,6 +1,5 @@
 "use client";
 
-import { AppShell } from "@/components/layout/AppShell";
 import { Badge } from "@/components/ui/Badge";
 import { StatusIndicator } from "@/components/ui/StatusIndicator";
 import { Card } from "@/components/ui/Card";
@@ -62,14 +61,12 @@ export default function CompoundDetailPage({ params }: { params: { id: string } 
 
   if (!compound) {
     return (
-      <AppShell>
-        <div className="px-4 py-12 text-center">
-          <p className="text-gray-400">Compound not found.</p>
-          <Link href="/explore" className="text-accent-green text-sm mt-2 inline-block">
-            Back to explore
-          </Link>
-        </div>
-      </AppShell>
+      <div className="min-h-screen bg-[#06090f] px-4 py-12 text-center">
+        <p className="text-gray-400">Compound not found.</p>
+        <Link href="/explore" className="text-[#1a9a8a] text-sm mt-2 inline-block">
+          Back to explore
+        </Link>
+      </div>
     );
   }
 
@@ -80,16 +77,21 @@ export default function CompoundDetailPage({ params }: { params: { id: string } 
   const timeline = mockTimelines[compound.id] || [];
 
   return (
-    <AppShell>
+    <div className="min-h-screen bg-[#06090f]">
+      <header className="sticky top-0 z-40 bg-[#06090f]/80 backdrop-blur-xl border-b border-[#1e293b]/50">
+        <div className="max-w-3xl mx-auto px-4 md:px-6">
+          <div className="flex items-center h-14 gap-4">
+            <Link
+              href="/explore"
+              className="flex items-center gap-2 text-[#64748b] hover:text-[#1a9a8a] transition-colors"
+            >
+              <ArrowLeft size={18} />
+              <span className="text-xs font-medium">探索に戻る</span>
+            </Link>
+          </div>
+        </div>
+      </header>
       <div className="px-4 py-6 max-w-3xl mx-auto">
-        <Link
-          href="/explore"
-          className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white mb-4 transition-colors"
-        >
-          <ArrowLeft size={16} />
-          Back to explore
-        </Link>
-
         {/* Compound header */}
         <Card className="p-6 mb-6">
           <div className="flex items-start justify-between mb-4">
@@ -145,6 +147,6 @@ export default function CompoundDetailPage({ params }: { params: { id: string } 
           </section>
         )}
       </div>
-    </AppShell>
+    </div>
   );
 }

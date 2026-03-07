@@ -1,6 +1,5 @@
 "use client";
 
-import { AppShell } from "@/components/layout/AppShell";
 import { DiffView } from "@/components/ui/DiffView";
 import { SourceTierBadge } from "@/components/ui/SourceTierBadge";
 import { ConfidenceLabel } from "@/components/ui/ConfidenceLabel";
@@ -22,55 +21,55 @@ const statusToLegalStatus = {
 export default function AlertDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
 
-  // React Query hook — fall back to mock data while backend is unavailable
   const alertQuery = useAlert(id);
   const alert = alertQuery.data?.data ?? mockAlerts.find((a) => a.id === id);
 
   if (alertQuery.isLoading) {
     return (
-      <AppShell>
-        <div className="px-4 py-6 max-w-3xl mx-auto space-y-4">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-48 w-full rounded-xl" />
-          <Skeleton className="h-24 w-full rounded-xl" />
-          <Skeleton className="h-24 w-full rounded-xl" />
-        </div>
-      </AppShell>
+      <div className="min-h-screen bg-[#06090f] px-4 py-6 max-w-3xl mx-auto space-y-4">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-48 w-full rounded-xl" />
+        <Skeleton className="h-24 w-full rounded-xl" />
+        <Skeleton className="h-24 w-full rounded-xl" />
+      </div>
     );
   }
 
   if (!alert) {
     return (
-      <AppShell>
-        <div className="px-4 py-12 text-center">
-          <p className="text-gray-400">Alert not found.</p>
-          <Link href="/alerts" className="text-accent-green text-sm mt-2 inline-block">
-            Back to alerts
-          </Link>
-        </div>
-      </AppShell>
+      <div className="min-h-screen bg-[#06090f] px-4 py-12 text-center">
+        <p className="text-gray-400">Alert not found.</p>
+        <Link href="/universe" className="text-[#1a9a8a] text-sm mt-2 inline-block">
+          Back to universe
+        </Link>
+      </div>
     );
   }
 
   return (
-    <AppShell>
-      <div className="px-4 py-6 max-w-3xl mx-auto">
-        {/* Back link */}
-        <Link
-          href="/alerts"
-          className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white mb-4 transition-colors"
-        >
-          <ArrowLeft size={16} />
-          Back to alerts
-        </Link>
+    <div className="min-h-screen bg-[#06090f]">
+      <header className="sticky top-0 z-40 bg-[#06090f]/80 backdrop-blur-xl border-b border-[#1e293b]/50">
+        <div className="max-w-3xl mx-auto px-4 md:px-6">
+          <div className="flex items-center h-14 gap-4">
+            <Link
+              href="/explore"
+              className="flex items-center gap-2 text-[#64748b] hover:text-[#1a9a8a] transition-colors"
+            >
+              <ArrowLeft size={18} />
+              <span className="text-xs font-medium">探索に戻る</span>
+            </Link>
+          </div>
+        </div>
+      </header>
 
+      <div className="px-4 py-6 max-w-3xl mx-auto">
         {/* Primary source link */}
         {alert.primary_source_url && (
           <a
             href={alert.primary_source_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-3 py-2 mb-4 bg-accent-green/10 border border-accent-green/30 rounded-lg text-sm text-accent-green hover:bg-accent-green/20 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 mb-4 bg-[#1a9a8a]/10 border border-[#1a9a8a]/30 rounded-lg text-sm text-[#1a9a8a] hover:bg-[#1a9a8a]/20 transition-colors"
           >
             <ExternalLink size={14} />
             View Primary Source
@@ -104,7 +103,7 @@ export default function AlertDetailPage({ params }: { params: { id: string } }) 
         {/* Summary block */}
         <div className="space-y-4 mb-6">
           <Card className="p-4">
-            <h3 className="text-xs font-semibold text-accent-green uppercase tracking-wider mb-2">
+            <h3 className="text-xs font-semibold text-[#1a9a8a] uppercase tracking-wider mb-2">
               What Changed
             </h3>
             <p className="text-sm text-gray-300">{alert.summary_what}</p>
@@ -184,6 +183,6 @@ export default function AlertDetailPage({ params }: { params: { id: string } }) 
           </div>
         </Card>
       </div>
-    </AppShell>
+    </div>
   );
 }
