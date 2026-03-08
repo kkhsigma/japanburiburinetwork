@@ -4,12 +4,20 @@ import { motion } from "framer-motion";
 import { monitoredSources, type MonitoredSource } from "@/data/dashboard-mock";
 import type { SourceTier } from "@/types";
 
-const tierStyles: Record<SourceTier, string> = {
-  1: "border-emerald-200 bg-emerald-50/40",
-  2: "border-cyan-200 bg-cyan-50/40",
-  3: "border-violet-200 bg-violet-50/40",
-  4: "border-amber-200 bg-amber-50/40",
-  5: "border-red-200 bg-red-50/40",
+const tierLabel: Record<SourceTier, string> = {
+  1: "公式",
+  2: "準公式",
+  3: "報道",
+  4: "市場",
+  5: "未検証",
+};
+
+const tierStyle: Record<SourceTier, string> = {
+  1: "border-emerald-400/30 bg-emerald-500/5",
+  2: "border-cyan-400/30 bg-cyan-500/5",
+  3: "border-violet-400/30 bg-violet-500/5",
+  4: "border-amber-400/30 bg-amber-500/5",
+  5: "border-red-400/30 bg-red-500/5",
 };
 
 const statusDot: Record<MonitoredSource["status"], string> = {
@@ -20,33 +28,34 @@ const statusDot: Record<MonitoredSource["status"], string> = {
 
 export function MonitoredSources() {
   return (
-    <section id="sources" className="px-4 pt-12 pb-20">
-      <div className="max-w-7xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.35 }}
-          className="mb-5"
-        >
-          <h2 className="text-lg font-semibold text-gray-900">監視ソース</h2>
-        </motion.div>
-        <div className="flex flex-wrap gap-2.5">
+    <section id="sources" className="pt-8 pb-12">
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <span className="section-label font-mono">監視ソース</span>
+          <span className="text-[9px] font-mono text-gray-300 bg-gray-100 px-1.5 py-0.5 rounded">
+            {monitoredSources.length}件
+          </span>
+        </div>
+        <div className="flex flex-col gap-1.5">
           {monitoredSources.map((source, i) => (
             <motion.div
               key={source.id}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.3, delay: 0.4 + i * 0.04 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.25, delay: 0.2 + i * 0.04 }}
               className={`
-                inline-flex items-center gap-2.5 px-4 py-2.5 rounded-lg
-                bg-white border ${tierStyles[source.tier]}
-                hover:shadow-sm transition-all duration-200 shadow-sm
+                flex items-center gap-3 px-3 py-2 rounded-lg
+                bg-white/60 backdrop-blur-sm border
+                ${tierStyle[source.tier]}
+                hover:bg-white hover:shadow-sm transition-all duration-200
               `}
             >
-              <div className={`w-1.5 h-1.5 rounded-full ${statusDot[source.status]}`} />
-              <span className="text-xs font-medium text-gray-800">{source.name}</span>
-              <span className="text-2xs text-gray-400 font-mono">T{source.tier}</span>
-              <span className="text-2xs text-gray-400">{source.lastChecked}</span>
+              <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusDot[source.status]}`} />
+              <span className="text-[12px] font-medium text-gray-800 flex-1">{source.name}</span>
+              <span className="text-[9px] font-mono text-gray-400 tracking-wider">
+                {tierLabel[source.tier]}
+              </span>
+              <span className="text-[9px] font-mono text-gray-300">{source.lastChecked}</span>
             </motion.div>
           ))}
         </div>

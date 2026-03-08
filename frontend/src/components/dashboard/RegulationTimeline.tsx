@@ -3,29 +3,23 @@
 import { motion } from "framer-motion";
 import { timelineEvents, type TimelineEvent } from "@/data/dashboard-mock";
 
-const categoryStyles: Record<TimelineEvent["category"], { dot: string; label: string }> = {
-  regulation: { dot: "bg-teal-500", label: "規制" },
-  enforcement: { dot: "bg-red-500", label: "執行" },
-  review: { dot: "bg-amber-500", label: "審議" },
-  publication: { dot: "bg-sky-500", label: "公表" },
+const categoryStyles: Record<TimelineEvent["category"], { dot: string; label: string; labelStyle: string }> = {
+  regulation:   { dot: "bg-teal-500",  label: "規制",  labelStyle: "text-teal-600 bg-teal-500/10" },
+  enforcement:  { dot: "bg-red-500",   label: "執行",  labelStyle: "text-red-600 bg-red-500/10" },
+  review:       { dot: "bg-amber-500", label: "審議",  labelStyle: "text-amber-600 bg-amber-500/10" },
+  publication:  { dot: "bg-sky-500",   label: "公表",  labelStyle: "text-sky-600 bg-sky-500/10" },
 };
 
 export function RegulationTimeline() {
   return (
-    <section id="timeline" className="px-4 pt-12">
-      <div className="max-w-7xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.3 }}
-          className="mb-5"
-        >
-          <h2 className="text-lg font-semibold text-gray-900">規制タイムライン</h2>
-        </motion.div>
+    <section id="timeline" className="pt-8">
+      <div>
+        <div className="mb-3">
+          <span className="section-label font-mono">規制タイムライン</span>
+        </div>
 
         <div className="relative">
-          {/* Vertical line */}
-          <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gray-200" />
+          <div className="absolute left-[5px] top-2 bottom-2 w-px bg-black/[0.06]" />
 
           <div className="flex flex-col gap-0">
             {timelineEvents.map((event, i) => {
@@ -33,25 +27,22 @@ export function RegulationTimeline() {
               return (
                 <motion.div
                   key={event.id}
-                  initial={{ opacity: 0, x: -6 }}
+                  initial={{ opacity: 0, x: -4 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.35, delay: 0.35 + i * 0.06 }}
-                  className="relative pl-7 pb-6 last:pb-0 group"
+                  transition={{ duration: 0.3, delay: 0.2 + i * 0.05 }}
+                  className="relative pl-6 pb-4 last:pb-0 group"
                 >
-                  {/* Dot */}
-                  <div
-                    className={`absolute left-0 top-1.5 w-[15px] h-[15px] rounded-full border-2 border-white ${style.dot}`}
-                  />
+                  <div className={`absolute left-0 top-1.5 w-[11px] h-[11px] rounded-full border-2 border-white ${style.dot}`} />
 
-                  <div className="bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 hover:shadow-sm transition-all shadow-sm">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-2xs font-mono text-gray-400">{event.date}</span>
-                      <span className="text-2xs text-gray-500 px-1.5 py-0.5 rounded bg-gray-50 border border-gray-100">
+                  <div className="bg-white/70 backdrop-blur-sm border border-black/[0.06] rounded-lg p-3 hover:bg-white hover:border-black/[0.1] transition-all duration-200">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[9px] font-mono text-gray-400">{event.date}</span>
+                      <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${style.labelStyle}`}>
                         {style.label}
                       </span>
                     </div>
-                    <h3 className="text-sm font-medium text-gray-900">{event.title}</h3>
-                    <p className="mt-1 text-xs text-gray-500">{event.description}</p>
+                    <h3 className="text-[12px] font-semibold text-gray-900 leading-snug">{event.title}</h3>
+                    <p className="mt-0.5 text-[11px] text-gray-500">{event.description}</p>
                   </div>
                 </motion.div>
               );
