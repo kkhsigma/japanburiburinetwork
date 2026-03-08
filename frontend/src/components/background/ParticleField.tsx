@@ -186,7 +186,7 @@ export function ParticleField({ className, transitionState = "idle" }: ParticleF
         absorptionRadius = 35;
         connectionFade = 0.1;
         damping = 0.99;
-      } else if (state === "zoom" || state === "navigate") {
+      } else if (state === "zoom" || state === "supernova" || state === "navigate") {
         gravityStrength = 10;
         spiralFactor = 0.15;
         absorptionRadius = 80;

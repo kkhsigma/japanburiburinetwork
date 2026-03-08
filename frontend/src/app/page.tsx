@@ -21,10 +21,11 @@ export default function Page() {
 
     setTimeout(() => setTransitionState("singularity"), 700);
     setTimeout(() => setTransitionState("zoom"), 1400);
+    setTimeout(() => setTransitionState("supernova"), 2100);
     setTimeout(() => {
       setTransitionState("navigate");
       router.push("/universe");
-    }, 2000);
+    }, 3800);
   }, [transitionState, router]);
 
   return (
