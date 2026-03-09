@@ -1,26 +1,25 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { HeroSection } from "@/components/cannabis/HeroSection";
-import { RegulatoryAlerts } from "@/components/cannabis/RegulatoryAlertCard";
-import { CannabinoidDatabase } from "@/components/cannabis/CannabinoidCard";
-import { LegalizationMap } from "@/components/cannabis/LegalizationMap";
-import { JapanPolicyTimeline } from "@/components/cannabis/JapanPolicyTimeline";
-import { MarketCategoryChart } from "@/components/cannabis/MarketCategoryChart";
-import { ResearchFeed } from "@/components/cannabis/ResearchPaperCard";
-import { CommunityPosts } from "@/components/cannabis/CommunityPostCard";
-import { FeaturedAnalysis } from "@/components/cannabis/FeaturedAnalysis";
-import { WorldMap } from "@/components/cannabis/WorldMap";
-import { CannabinoidLegalStatus } from "@/components/cannabis/CannabinoidLegalStatus";
+import { HeroSection } from "@/components/psychedelics/HeroSection";
+import { PsychedelicLegalStatus } from "@/components/psychedelics/PsychedelicLegalStatus";
+import { RegulatoryAlerts } from "@/components/psychedelics/RegulatoryAlertCard";
+import { LegalizationMap } from "@/components/psychedelics/LegalizationMap";
+import { JapanPolicyTimeline } from "@/components/psychedelics/JapanPolicyTimeline";
+import { MarketCategoryChart } from "@/components/psychedelics/MarketCategoryChart";
+import { WorldMap } from "@/components/psychedelics/WorldMap";
+import { ResearchFeed } from "@/components/psychedelics/ResearchPaperCard";
+import { CommunityPosts } from "@/components/psychedelics/CommunityPostCard";
+import { FeaturedAnalysis } from "@/components/psychedelics/FeaturedAnalysis";
 
-export default function CannabisPage() {
+export default function PsychedelicsPage() {
   return (
     <div className="min-h-screen bg-[#020810] text-gray-100">
       {/* Back to universe link */}
       <div className="fixed top-4 left-4 z-50">
         <a
           href="/universe"
-          className="inline-flex items-center gap-2 text-[11px] font-mono text-gray-500 hover:text-emerald-400 transition-colors px-3 py-1.5 rounded-lg border border-white/[0.06] bg-[#020810]/80 backdrop-blur-sm"
+          className="inline-flex items-center gap-2 text-[11px] font-mono text-gray-500 hover:text-purple-400 transition-colors px-3 py-1.5 rounded-lg border border-white/[0.06] bg-[#020810]/80 backdrop-blur-sm"
         >
           ← Universe
         </a>
@@ -28,12 +27,11 @@ export default function CannabisPage() {
 
       <HeroSection />
 
-      {/* Divider */}
       <div className="max-w-6xl mx-auto px-6">
         <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
       </div>
 
-      <CannabinoidLegalStatus />
+      <PsychedelicLegalStatus />
 
       <div className="max-w-6xl mx-auto px-6">
         <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
@@ -51,19 +49,13 @@ export default function CannabisPage() {
         <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
       </div>
 
-      <CannabinoidDatabase />
-
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
-      </div>
-
       <WorldMap />
 
       <div className="max-w-6xl mx-auto px-6">
         <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
       </div>
 
-      {/* Market & Policy Tracker — 3 dashboard panels */}
+      {/* Market & Policy Tracker */}
       <section className="px-6 py-20">
         <div className="max-w-6xl mx-auto">
           <motion.div
@@ -73,10 +65,10 @@ export default function CannabisPage() {
             transition={{ duration: 0.5 }}
             className="mb-8"
           >
-            <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-emerald-500/60 mb-2">
-              Dashboard
+            <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-purple-500/60 mb-2">
+              ダッシュボード
             </p>
-            <h2 className="text-2xl sm:text-3xl font-bold text-white">Market & Policy Tracker</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold text-white">市場・政策トラッカー</h2>
           </motion.div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -120,10 +112,9 @@ export default function CannabisPage() {
 
       <CommunityPosts />
 
-      {/* Footer */}
       <footer className="px-6 py-12 text-center">
         <p className="text-[10px] font-mono text-gray-600 tracking-wide">
-          JBN Cannabis Intelligence — Regulatory data for informational purposes only
+          JBN Psychedelic Intelligence — 規制データは情報提供のみを目的としています
         </p>
       </footer>
     </div>

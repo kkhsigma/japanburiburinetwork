@@ -1,10 +1,13 @@
 "use client";
 
-import { useRef, useMemo, useState, Fragment, Suspense } from "react";
+import { useRef, useMemo, useState, useEffect, createContext, useContext, Fragment, Suspense } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, Stars } from "@react-three/drei";
 import * as THREE from "three";
 import { useRouter } from "next/navigation";
+
+// ─── Intro Animation Context ────────────────────────────
+const IntroContext = createContext({ skipIntro: false });
 
 // ─── Procedural Noise ───────────────────────────────────
 
@@ -365,6 +368,7 @@ function GoldenPath({
   delay?: number;
   growDuration?: number;
 }) {
+  const { skipIntro } = useContext(IntroContext);
   const meshRef = useRef<THREE.Mesh>(null);
   const startTime = useRef<number | null>(null);
 
@@ -382,6 +386,11 @@ function GoldenPath({
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
+    if (skipIntro) {
+      const totalIndices = geometry.index ? geometry.index.count : geometry.attributes.position.count;
+      geometry.setDrawRange(0, totalIndices);
+      return;
+    }
     if (startTime.current === null) startTime.current = t + delay;
     const elapsed = t - startTime.current;
     if (elapsed < 0) return;
@@ -418,6 +427,7 @@ function PathDots({
   end: [number, number, number];
   delay?: number;
 }) {
+  const { skipIntro } = useContext(IntroContext);
   const count = 10;
   const pointsRef = useRef<THREE.Points>(null);
   const startTime = useRef<number | null>(null);
@@ -440,6 +450,23 @@ function PathDots({
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
+    if (skipIntro) {
+      if (pointsRef.current) pointsRef.current.visible = true;
+      const pos = geo.attributes.position.array as Float32Array;
+      for (let i = 0; i < count; i++) {
+        const prog = (t * 0.04 + i / count) % 1;
+        const pt = curve.getPoint(prog);
+        pos[i * 3] = pt.x;
+        pos[i * 3 + 1] = pt.y;
+        pos[i * 3 + 2] = pt.z;
+      }
+      geo.attributes.position.needsUpdate = true;
+      if (pointsRef.current) {
+        const mat = pointsRef.current.material as THREE.PointsMaterial;
+        mat.opacity = 0.6;
+      }
+      return;
+    }
     if (startTime.current === null) startTime.current = t + delay;
     const elapsed = t - startTime.current;
 
@@ -1241,6 +1268,7 @@ function NovaSpawn({
   color: string;
   position: [number, number, number];
 }) {
+  const { skipIntro } = useContext(IntroContext);
   const groupRef = useRef<THREE.Group>(null);
   const glow0 = useRef<THREE.Sprite>(null);
   const glow1 = useRef<THREE.Sprite>(null);
@@ -1273,6 +1301,13 @@ function NovaSpawn({
   const novaColor = useMemo(() => new THREE.Color(color), [color]);
 
   useFrame(({ clock }) => {
+    if (skipIntro) {
+      if (groupRef.current) groupRef.current.scale.setScalar(1);
+      [glow0.current, glow1.current, glow2.current].forEach((g) => { if (g) g.visible = false; });
+      if (rayRef.current) rayRef.current.visible = false;
+      if (ringRef.current) ringRef.current.visible = false;
+      return;
+    }
     const t = clock.getElapsedTime();
     if (startTime.current === null) startTime.current = t + delay;
     const elapsed = t - startTime.current;
@@ -1397,6 +1432,7 @@ function NovaSpawn({
 // ─── Sun Nova (sun appears with cinematic supernova) ────
 
 function SunNova({ children }: { children: React.ReactNode }) {
+  const { skipIntro } = useContext(IntroContext);
   const groupRef = useRef<THREE.Group>(null);
   const glow0 = useRef<THREE.Sprite>(null);
   const glow1 = useRef<THREE.Sprite>(null);
@@ -1429,6 +1465,14 @@ function SunNova({ children }: { children: React.ReactNode }) {
   }), []);
 
   useFrame(({ clock }) => {
+    if (skipIntro) {
+      if (groupRef.current) groupRef.current.scale.setScalar(1);
+      [glow0.current, glow1.current, glow2.current, glow3.current].forEach((g) => { if (g) g.visible = false; });
+      if (rayRef.current) rayRef.current.visible = false;
+      if (ringRef.current) ringRef.current.visible = false;
+      if (ring2Ref.current) ring2Ref.current.visible = false;
+      return;
+    }
     const t = clock.getElapsedTime();
     if (startTime.current === null) startTime.current = t + 0.15;
     const elapsed = t - startTime.current;
@@ -1741,7 +1785,24 @@ function CameraController({
 
 // ─── Scene ──────────────────────────────────────────────
 
-function Scene({ theme = "dark" }: { theme?: "dark" | "light" }) {
+// ─── Marks intro as seen after animations complete ───────
+function IntroMarker() {
+  const markedRef = useRef(false);
+  // The last animation is the book: delay = 0.8 + WORLDS.length * 0.6 + 1.0 * 0.85 + 1.8 ≈ 5.45s
+  const markTime = 0.8 + WORLDS.length * 0.6 + 1.0 + 1.8 + 0.5; // generous buffer
+
+  useFrame(({ clock }) => {
+    if (markedRef.current) return;
+    if (clock.getElapsedTime() > markTime) {
+      markedRef.current = true;
+      try { localStorage.setItem("jbn_intro_seen", "1"); } catch {}
+    }
+  });
+
+  return null;
+}
+
+function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"; skipIntro?: boolean }) {
   const [travelTarget, setTravelTarget] = useState<string | null>(null);
   const router = useRouter();
   const isLight = theme === "light";
@@ -1752,16 +1813,18 @@ function Scene({ theme = "dark" }: { theme?: "dark" | "light" }) {
 
   const handleArrive = () => {
     if (travelTarget === "blog") {
-      router.push("/blog");
+      router.push("/community");
     } else if (travelTarget === "cannabis") {
       router.push("/cannabis");
+    } else if (travelTarget === "psychedelics") {
+      router.push("/psychedelics");
     } else {
       router.push(`/explore?category=${travelTarget}`);
     }
   };
 
   return (
-    <>
+    <IntroContext.Provider value={{ skipIntro }}>
       {/* Dynamic background */}
       <color attach="background" args={[isLight ? "#1a1a2e" : "#02060c"]} />
       <fog attach="fog" args={[isLight ? "#1a1a2e" : "#02060c", isLight ? 50 : 40, 120]} />
@@ -1796,6 +1859,9 @@ function Scene({ theme = "dark" }: { theme?: "dark" | "light" }) {
         fade
         speed={isLight ? 0.6 : 0.4}
       />
+
+      {/* Mark intro as seen once animation completes */}
+      {!skipIntro && <IntroMarker />}
 
       {/* Central Hub — appears with supernova */}
       <SunNova>
@@ -1861,7 +1927,7 @@ function Scene({ theme = "dark" }: { theme?: "dark" | "light" }) {
         enablePan={false}
       />
 
-    </>
+    </IntroContext.Provider>
   );
 }
 
@@ -1895,9 +1961,11 @@ function SunProjector({
 export function UniverseCanvas({
   theme = "dark",
   sunPosRef,
+  skipIntro = false,
 }: {
   theme?: "dark" | "light";
   sunPosRef?: { current: { x: number; y: number } };
+  skipIntro?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -1910,7 +1978,7 @@ export function UniverseCanvas({
         style={{ cursor: "auto" }}
       >
         <Suspense fallback={null}>
-          <Scene theme={theme} />
+          <Scene theme={theme} skipIntro={skipIntro} />
           {sunPosRef && (
             <SunProjector sunPosRef={sunPosRef} containerRef={containerRef} />
           )}

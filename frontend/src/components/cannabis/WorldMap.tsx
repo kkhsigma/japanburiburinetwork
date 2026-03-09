@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
+import { ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 
 type Status = "legal" | "medical" | "decriminalized" | "restricted" | "illegal";
 
@@ -276,24 +277,185 @@ const COUNTRIES: CountryData[] = [
   },
 ];
 
-const CONTINENTS = [
-  "M 130,48 L 165,38 195,52 210,45 245,48 262,58 270,72 265,88 275,98 268,108 255,118 248,128 252,148 245,162 238,172 232,182 218,188 206,198 198,208 186,212 178,208 172,192 162,172 148,158 142,148 128,128 118,108 112,88 118,68 130,48",
-  "M 270,228 L 292,218 308,228 322,235 338,242 348,258 358,278 362,298 355,318 348,338 340,352 328,368 318,378 305,385 292,372 288,358 282,338 272,318 268,298 262,268 265,248 270,228",
-  "M 472,48 L 488,42 505,48 525,52 548,55 565,62 572,72 568,82 558,92 555,98 548,108 535,112 528,118 535,128 528,138 518,142 508,148 498,148 488,142 478,138 472,128 468,112 465,98 462,82 465,68 468,58 472,48",
-  "M 468,162 L 488,155 508,158 528,162 548,165 568,168 582,178 592,198 595,218 592,238 588,258 582,278 575,298 568,318 558,338 545,348 532,352 518,348 505,338 498,328 492,308 488,288 478,268 472,248 465,228 462,208 458,188 462,172 468,162",
-  "M 572,42 L 598,38 625,42 658,48 692,52 725,58 758,55 788,52 815,58 842,62 868,55 885,62 892,72 888,82 878,98 872,108 882,118 892,128 888,138 878,148 865,155 848,158 832,162 815,168 798,172 778,178 758,185 738,192 718,198 698,205 678,198 658,188 642,178 628,168 615,158 605,148 595,138 585,125 578,108 575,92 572,72 572,42",
-  "M 828,298 L 852,292 878,295 902,302 918,312 925,328 922,345 912,358 898,365 878,368 858,362 842,352 832,338 828,322 825,308 828,298",
+// Pixel-grid continent map: each entry is [row, colStart, colEnd]
+// Grid: 100 cols × 50 rows on 1000×500 viewBox (stride=10, rect=8)
+type Run = [number, number, number];
+
+const LAND_RUNS: Run[] = [
+  // ── Greenland ──
+  [3, 39, 42], [4, 39, 43], [5, 40, 43], [6, 40, 42],
+
+  // ── North America ──
+  // Alaska
+  [5, 3, 6], [6, 3, 7], [7, 4, 6],
+  // Canada
+  [5, 14, 16], [5, 19, 25],
+  [6, 13, 16], [6, 18, 27],
+  [7, 13, 28],
+  [8, 14, 28],
+  [9, 15, 27],
+  [10, 15, 27],
+  // USA
+  [11, 16, 27],
+  [12, 16, 27],
+  [13, 17, 27],
+  [14, 17, 26],
+  [15, 18, 26],
+  [16, 19, 25],
+  // Mexico & Central America
+  [17, 19, 24],
+  [18, 20, 23],
+  [19, 20, 23],
+  [20, 20, 22],
+  [21, 21, 22],
+
+  // ── Caribbean ──
+  [18, 26, 27], [19, 27, 28], [19, 29, 29],
+
+  // ── South America ──
+  [22, 27, 31],
+  [23, 26, 33],
+  [24, 26, 35],
+  [25, 27, 36],
+  [26, 27, 36],
+  [27, 28, 36],
+  [28, 28, 36],
+  [29, 29, 36],
+  [30, 29, 35],
+  [31, 30, 35],
+  [32, 30, 35],
+  [33, 30, 34],
+  [34, 31, 34],
+  [35, 31, 33],
+  [36, 31, 33],
+  [37, 32, 33],
+  [38, 32, 33],
+
+  // ── Europe ──
+  // Scandinavia / Iceland
+  [3, 46, 47],
+  [4, 48, 50], [4, 53, 55],
+  [5, 47, 50], [5, 53, 56],
+  [6, 47, 51], [6, 53, 56],
+  // British Isles
+  [7, 48, 49],
+  [8, 48, 49],
+  // Mainland
+  [7, 51, 56],
+  [8, 50, 57],
+  [9, 49, 56],
+  [10, 49, 56],
+  [11, 49, 55],
+  [12, 49, 54],
+  [13, 49, 53],
+  [14, 49, 53],
+  [15, 49, 51],
+
+  // ── Africa ──
+  [16, 48, 56],
+  [17, 47, 57],
+  [18, 47, 58],
+  [19, 47, 59],
+  [20, 47, 59],
+  [21, 47, 59],
+  [22, 48, 59],
+  [23, 48, 59],
+  [24, 49, 59],
+  [25, 49, 58],
+  [26, 50, 58],
+  [27, 50, 58],
+  [28, 51, 57],
+  [29, 51, 57],
+  [30, 52, 57],
+  [31, 53, 57],
+  [32, 53, 57],
+  [33, 54, 56],
+  [34, 54, 56],
+
+  // ── Middle East ──
+  [14, 55, 60],
+  [15, 55, 62],
+  [16, 57, 63],
+  [17, 58, 63],
+
+  // ── Asia (mainland) ──
+  [3, 58, 62], [3, 68, 72],
+  [4, 57, 64], [4, 66, 75],
+  [5, 57, 76], [5, 78, 80],
+  [6, 57, 81],
+  [7, 57, 82],
+  [8, 58, 84],
+  [9, 58, 86],
+  [10, 59, 87],
+  [11, 60, 87],
+  [12, 60, 86],
+  [13, 61, 85],
+  [14, 62, 84],
+  [15, 63, 82],
+  [16, 64, 81],
+  [17, 66, 80],
+  [18, 68, 80],
+  [19, 70, 79],
+  [20, 72, 79],
+  [21, 74, 79],
+  // Japan
+  [13, 87, 88],
+  [14, 87, 89],
+  [15, 87, 88],
+  // SE Asia & Indonesian archipelago
+  [22, 76, 79], [22, 82, 84],
+  [23, 77, 78], [23, 82, 86],
+  [24, 83, 87],
+
+  // ── Australia ──
+  [29, 83, 91],
+  [30, 82, 92],
+  [31, 82, 93],
+  [32, 83, 93],
+  [33, 83, 92],
+  [34, 84, 92],
+  [35, 85, 91],
+  [36, 86, 90],
+  [37, 87, 89],
+
+  // ── New Zealand ──
+  [36, 93, 94],
+  [37, 93, 94],
+  [38, 93, 93],
 ];
+
+const CELL = 10;
+const RECT_SIZE = 8;
+
+function LandGrid() {
+  return (
+    <g>
+      {LAND_RUNS.map(([row, c0, c1], i) => (
+        <rect
+          key={i}
+          x={c0 * CELL + 1}
+          y={row * CELL + 1}
+          width={(c1 - c0 + 1) * CELL - 2}
+          height={RECT_SIZE}
+          rx={1}
+          fill="rgba(255,255,255,0.035)"
+          stroke="rgba(255,255,255,0.06)"
+          strokeWidth="0.5"
+        />
+      ))}
+    </g>
+  );
+}
 
 function Graticule() {
   const lines = [];
   for (let lat = -60; lat <= 90; lat += 30) {
     const y = ((90 - lat) / 180) * 500;
-    lines.push(<line key={`lat-${lat}`} x1="0" y1={y} x2="1000" y2={y} stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />);
+    lines.push(<line key={`lat-${lat}`} x1="0" y1={y} x2="1000" y2={y} stroke="rgba(255,255,255,0.025)" strokeWidth="0.5" />);
   }
   for (let lon = -180; lon <= 180; lon += 30) {
     const x = ((lon + 180) / 360) * 1000;
-    lines.push(<line key={`lon-${lon}`} x1={x} y1="0" x2={x} y2="500" stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />);
+    lines.push(<line key={`lon-${lon}`} x1={x} y1="0" x2={x} y2="500" stroke="rgba(255,255,255,0.025)" strokeWidth="0.5" />);
   }
   return <g>{lines}</g>;
 }
@@ -376,13 +538,84 @@ function Tooltip({ country, substance }: { country: CountryData; substance: Subs
   );
 }
 
+const DEFAULT_VB = { x: 0, y: 0, w: 1000, h: 500 };
+const MIN_ZOOM = 0.5; // viewBox can be half the default (2x zoom in)
+const MAX_ZOOM = 1;   // 1 = default (no zoom)
+
 export function WorldMap() {
   const [hovered, setHovered] = useState<string | null>(null);
   const [selected, setSelected] = useState<Substance>("CBD");
+  const [vb, setVb] = useState(DEFAULT_VB);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const dragRef = useRef<{ active: boolean; startX: number; startY: number; vbStart: typeof DEFAULT_VB } | null>(null);
+
+  const zoom = vb.w / DEFAULT_VB.w; // 1 = default, 0.5 = 2x zoom
+
+  const clampVb = useCallback((nx: number, ny: number, nw: number) => {
+    const w = Math.max(DEFAULT_VB.w * MIN_ZOOM, Math.min(DEFAULT_VB.w * MAX_ZOOM, nw));
+    const h = w / 2;
+    const x = Math.max(0, Math.min(DEFAULT_VB.w - w, nx));
+    const y = Math.max(0, Math.min(DEFAULT_VB.h - h, ny));
+    return { x, y, w, h };
+  }, []);
+
+  const handleWheel = useCallback((e: React.WheelEvent<SVGSVGElement>) => {
+    e.preventDefault();
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    // Mouse position as fraction of SVG element
+    const mx = (e.clientX - rect.left) / rect.width;
+    const my = (e.clientY - rect.top) / rect.height;
+
+    setVb((prev) => {
+      const factor = e.deltaY > 0 ? 1.1 : 0.9;
+      const nw = prev.w * factor;
+      const nh = nw / 2;
+      // Zoom toward mouse position
+      const nx = prev.x + (prev.w - nw) * mx;
+      const ny = prev.y + (prev.h - nh) * my;
+      return clampVb(nx, ny, nw);
+    });
+  }, [clampVb]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (zoom >= MAX_ZOOM) return; // no pan when fully zoomed out
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.setPointerCapture(e.pointerId);
+    dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, vbStart: { ...vb } };
+  }, [vb, zoom]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    const drag = dragRef.current;
+    if (!drag?.active) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const dx = ((e.clientX - drag.startX) / rect.width) * drag.vbStart.w;
+    const dy = ((e.clientY - drag.startY) / rect.height) * drag.vbStart.h;
+    setVb(clampVb(drag.vbStart.x - dx, drag.vbStart.y - dy, drag.vbStart.w));
+  }, [clampVb]);
+
+  const handlePointerUp = useCallback(() => {
+    dragRef.current = null;
+  }, []);
+
+  const zoomBy = useCallback((factor: number) => {
+    setVb((prev) => {
+      const nw = prev.w * factor;
+      const nh = nw / 2;
+      const nx = prev.x + (prev.w - nw) / 2;
+      const ny = prev.y + (prev.h - nh) / 2;
+      return clampVb(nx, ny, nw);
+    });
+  }, [clampVb]);
+
+  const resetZoom = useCallback(() => setVb(DEFAULT_VB), []);
 
   const hoveredCountry = COUNTRIES.find((c) => c.code === hovered);
 
-  // Count statuses for the selected substance
   const statusCounts: Record<Status, number> = { legal: 0, medical: 0, decriminalized: 0, restricted: 0, illegal: 0 };
   for (const c of COUNTRIES) {
     statusCounts[c.substances[selected].status]++;
@@ -450,19 +683,26 @@ export function WorldMap() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden"
+          className="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden relative"
         >
           <div className="relative w-full" style={{ paddingBottom: "50%" }}>
             <svg
-              viewBox="0 0 1000 500"
+              ref={svgRef}
+              viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
               className="absolute inset-0 w-full h-full"
-              style={{ background: "linear-gradient(180deg, #020810 0%, #041018 50%, #020810 100%)" }}
+              style={{
+                background: "linear-gradient(180deg, #020810 0%, #041018 50%, #020810 100%)",
+                cursor: zoom < MAX_ZOOM ? "grab" : "default",
+                touchAction: "none",
+              }}
+              onWheel={handleWheel}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerLeave={handlePointerUp}
             >
               <Graticule />
-
-              {CONTINENTS.map((d, i) => (
-                <path key={i} d={d} fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.06)" strokeWidth="0.8" strokeLinejoin="round" />
-              ))}
+              <LandGrid />
 
               {COUNTRIES.map((c) => {
                 const status = c.substances[selected].status;
@@ -493,6 +733,38 @@ export function WorldMap() {
               {hoveredCountry && <Tooltip country={hoveredCountry} substance={selected} />}
             </svg>
           </div>
+
+          {/* Zoom controls */}
+          <div className="absolute top-3 right-3 flex flex-col gap-1.5">
+            <button
+              onClick={() => zoomBy(0.75)}
+              disabled={zoom <= MIN_ZOOM}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-white/[0.08] bg-[#020810]/80 backdrop-blur-sm text-gray-400 hover:text-white hover:border-white/[0.15] transition-colors disabled:opacity-30 disabled:pointer-events-none"
+            >
+              <ZoomIn size={14} />
+            </button>
+            <button
+              onClick={() => zoomBy(1.33)}
+              disabled={zoom >= MAX_ZOOM}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-white/[0.08] bg-[#020810]/80 backdrop-blur-sm text-gray-400 hover:text-white hover:border-white/[0.15] transition-colors disabled:opacity-30 disabled:pointer-events-none"
+            >
+              <ZoomOut size={14} />
+            </button>
+            <button
+              onClick={resetZoom}
+              disabled={zoom >= MAX_ZOOM}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-white/[0.08] bg-[#020810]/80 backdrop-blur-sm text-gray-400 hover:text-white hover:border-white/[0.15] transition-colors disabled:opacity-30 disabled:pointer-events-none"
+            >
+              <Maximize2 size={14} />
+            </button>
+          </div>
+
+          {/* Zoom indicator */}
+          {zoom < MAX_ZOOM && (
+            <div className="absolute bottom-3 right-3 text-[9px] font-mono text-gray-500 bg-[#020810]/80 backdrop-blur-sm px-2 py-1 rounded-md border border-white/[0.06]">
+              {Math.round((1 / zoom) * 100)}%
+            </div>
+          )}
         </motion.div>
       </div>
     </section>

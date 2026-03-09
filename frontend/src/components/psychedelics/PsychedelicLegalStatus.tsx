@@ -26,132 +26,116 @@ interface Substance {
 
 const SUBSTANCES: Substance[] = [
   {
-    name: "CBD",
-    nameJa: "カンナビジオール",
-    status: "legal",
-    statusLabel: "合法",
-    color: "#22c55e",
-    description: "非精神活性。茎・種子由来のCBD製品は合法。厚労省への輸入届出が必要。",
+    name: "シロシビン",
+    nameJa: "Psilocybin（マジックマッシュルーム）",
+    status: "illegal",
+    statusLabel: "違法",
+    color: "#a855f7",
+    description: "麻薬及び向精神薬取締法により規制。所持・使用・譲渡が禁止。海外では臨床試験が進行中。",
   },
   {
-    name: "THC",
-    nameJa: "テトラヒドロカンナビノール",
+    name: "LSD",
+    nameJa: "リゼルグ酸ジエチルアミド",
     status: "illegal",
     statusLabel: "違法",
     color: "#ef4444",
-    description: "大麻取締法により所持・使用が禁止。2023年改正で「使用罪」が新設。",
+    description: "麻薬取締法により厳格に禁止。微量でも強力な精神活性作用。マイクロドーシング研究が注目。",
   },
   {
-    name: "CBN",
-    nameJa: "カンナビノール",
-    status: "gray",
-    statusLabel: "グレーゾーン",
-    color: "#f59e0b",
-    description: "THCの酸化分解物。現時点で明確な規制なし。規制強化の可能性あり。",
+    name: "MDMA",
+    nameJa: "メチレンジオキシメタンフェタミン",
+    status: "illegal",
+    statusLabel: "違法",
+    color: "#ec4899",
+    description: "麻薬取締法により禁止。米国FDAがPTSD治療として画期的治療薬指定。2024年承認審査。",
   },
   {
-    name: "CBG",
-    nameJa: "カンナビゲロール",
-    status: "legal",
-    statusLabel: "合法",
-    color: "#14b8a6",
-    description: "非精神活性の前駆体カンナビノイド。THCを含まなければ規制対象外。",
-  },
-  {
-    name: "CBC",
-    nameJa: "カンナビクロメン",
-    status: "legal",
-    statusLabel: "合法",
-    color: "#06b6d4",
-    description: "非精神活性カンナビノイド。抗炎症作用の研究が進行中。規制対象外。",
-  },
-  {
-    name: "THCV",
-    nameJa: "テトラヒドロカンナビバリン",
-    status: "gray",
-    statusLabel: "グレーゾーン",
-    color: "#eab308",
-    description: "THCの類似体だが作用は異なる。法的位置づけが不明確。",
-  },
-  {
-    name: "HHC",
-    nameJa: "ヘキサヒドロカンナビノール",
-    status: "designated",
-    statusLabel: "指定薬物",
-    color: "#a855f7",
-    description: "2023年に指定薬物に追加。製造・販売・所持・使用が禁止。",
-  },
-  {
-    name: "THCP",
-    nameJa: "テトラヒドロカンナビホロール",
-    status: "designated",
-    statusLabel: "指定薬物",
-    color: "#dc2626",
-    description: "CB1受容体に対しTHCの33倍の結合親和性。指定薬物として規制。",
-  },
-  {
-    name: "HHCH",
-    nameJa: "ヘキサヒドロカンナビヘキソール",
-    status: "designated",
-    statusLabel: "指定薬物",
-    color: "#c084fc",
-    description: "2024年に指定薬物に追加。HHCの類似体として規制対象。",
-  },
-  {
-    name: "Delta-8 THC",
-    nameJa: "デルタ8 THC",
+    name: "DMT",
+    nameJa: "ジメチルトリプタミン",
     status: "illegal",
     statusLabel: "違法",
     color: "#f97316",
-    description: "THCの異性体。大麻取締法の規制対象。精神活性作用あり。",
+    description: "麻薬取締法により規制。アヤワスカの主成分。短時間の強力な精神活性作用。",
   },
   {
-    name: "Delta-10 THC",
-    nameJa: "デルタ10 THC",
-    status: "illegal",
-    statusLabel: "違法",
-    color: "#fb923c",
-    description: "合成THC異性体。大麻取締法および指定薬物として規制。",
-  },
-  {
-    name: "THCO",
-    nameJa: "THCOアセテート",
-    status: "designated",
-    statusLabel: "指定薬物",
-    color: "#ec4899",
-    description: "合成THC誘導体。指定薬物として製造・販売・所持が禁止。",
-  },
-  {
-    name: "CBDa",
-    nameJa: "カンナビジオール酸",
-    status: "legal",
-    statusLabel: "合法",
-    color: "#34d399",
-    description: "CBDの酸性前駆体。非精神活性。THCを含まなければ合法。",
-  },
-  {
-    name: "CBDv",
-    nameJa: "カンナビジバリン",
-    status: "legal",
-    statusLabel: "合法",
-    color: "#2dd4bf",
-    description: "CBDの類似体。抗てんかん作用の研究が進行中。規制対象外。",
-  },
-  {
-    name: "医療用大麻",
-    nameJa: "医療用カンナビノイド製剤",
+    name: "ケタミン",
+    nameJa: "Ketamine",
     status: "medical",
     statusLabel: "条件付き許可",
     color: "#0ea5e9",
-    description: "2023年改正法により大麻由来医薬品の使用が解禁。エピディオレックス等が対象。",
+    description: "麻酔薬として医療使用が許可。治療抵抗性うつ病への適応が世界的に拡大。",
   },
   {
-    name: "大麻草",
-    nameJa: "植物体（花穂・葉）",
+    name: "メスカリン",
+    nameJa: "Mescaline（ペヨーテ）",
     status: "illegal",
     statusLabel: "違法",
-    color: "#b91c1c",
-    description: "大麻取締法により栽培・所持・譲渡が禁止。免許制の産業用栽培のみ例外。",
+    color: "#f59e0b",
+    description: "麻薬取締法により規制。サボテン由来の天然サイケデリクス。先住民族の宗教使用は一部例外。",
+  },
+  {
+    name: "2C-B",
+    nameJa: "4-ブロモ-2,5-ジメトキシフェネチルアミン",
+    status: "designated",
+    statusLabel: "指定薬物",
+    color: "#d946ef",
+    description: "指定薬物として規制。フェネチルアミン系合成サイケデリクス。",
+  },
+  {
+    name: "イボガイン",
+    nameJa: "Ibogaine",
+    status: "gray",
+    statusLabel: "グレーゾーン",
+    color: "#eab308",
+    description: "日本では明確な規制なし。依存症治療への応用研究が進行中。一部の国で治療的使用。",
+  },
+  {
+    name: "5-MeO-DMT",
+    nameJa: "5-メトキシ-N,N-ジメチルトリプタミン",
+    status: "illegal",
+    statusLabel: "違法",
+    color: "#fb923c",
+    description: "麻薬取締法により規制。ヒキガエル由来。極めて強力な短時間作用。",
+  },
+  {
+    name: "サルビア",
+    nameJa: "Salvia divinorum",
+    status: "designated",
+    statusLabel: "指定薬物",
+    color: "#c084fc",
+    description: "2007年に指定薬物に追加。κ-オピオイド受容体作動薬。強力な解離作用。",
+  },
+  {
+    name: "エスケタミン",
+    nameJa: "Esketamine（スプラバト）",
+    status: "medical",
+    statusLabel: "条件付き許可",
+    color: "#14b8a6",
+    description: "2019年FDA承認。治療抵抗性うつ病への鼻腔スプレー。日本でも承認。",
+  },
+  {
+    name: "PCP",
+    nameJa: "フェンシクリジン",
+    status: "illegal",
+    statusLabel: "違法",
+    color: "#dc2626",
+    description: "麻薬取締法により厳格に禁止。強力な解離性麻酔薬。医療用途なし。",
+  },
+  {
+    name: "4-AcO-DMT",
+    nameJa: "4-アセトキシ-DMT",
+    status: "designated",
+    statusLabel: "指定薬物",
+    color: "#e879f9",
+    description: "指定薬物として規制。シロシビンのプロドラッグ。研究用途のみ。",
+  },
+  {
+    name: "MAPS治療",
+    nameJa: "サイケデリクス支援療法",
+    status: "gray",
+    statusLabel: "グレーゾーン",
+    color: "#22d3ee",
+    description: "日本では未承認だが研究段階。米国・欧州でMDMA/シロシビン治療の臨床試験が進行。",
   },
 ];
 
@@ -173,24 +157,17 @@ function Card({ substance, index }: { substance: Substance; index: number }) {
         />
         <h3 className="text-lg font-bold font-mono text-white tracking-tight">{substance.name}</h3>
       </div>
-
       <p className="text-[10px] text-gray-500 mb-2">{substance.nameJa}</p>
-
       <p className="text-[12px] text-gray-400 leading-relaxed mb-4">{substance.description}</p>
-
-      <span
-        className="text-[11px] font-mono font-medium tracking-wide"
-        style={{ color: substance.color }}
-      >
+      <span className="text-[11px] font-mono font-medium tracking-wide" style={{ color: substance.color }}>
         {substance.statusLabel} →
       </span>
     </motion.div>
   );
 }
 
-export function CannabinoidLegalStatus() {
+export function PsychedelicLegalStatus() {
   const [filter, setFilter] = useState<Filter>("all");
-
   const filtered = filter === "all" ? SUBSTANCES : SUBSTANCES.filter((s) => s.status === filter);
 
   return (
@@ -203,18 +180,17 @@ export function CannabinoidLegalStatus() {
           transition={{ duration: 0.5 }}
           className="mb-6"
         >
-          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-emerald-500/60 mb-2">
+          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-purple-500/60 mb-2">
             規制ステータス
           </p>
           <h2 className="text-2xl sm:text-3xl font-bold text-white">
-            日本国内カンナビノイド規制一覧
+            日本国内サイケデリクス規制一覧
           </h2>
           <p className="text-[12px] text-gray-500 mt-2">
-            2023年大麻取締法改正・指定薬物制度に基づく最新の法的ステータス（{SUBSTANCES.length}物質）
+            麻薬取締法・指定薬物制度に基づく最新の法的ステータス（{SUBSTANCES.length}物質）
           </p>
         </motion.div>
 
-        {/* Filter buttons */}
         <div className="flex flex-wrap gap-2 mb-8">
           {FILTERS.map((f) => {
             const isActive = filter === f.value;
@@ -230,21 +206,9 @@ export function CannabinoidLegalStatus() {
                   borderColor: isActive ? `${f.color}40` : "rgba(255,255,255,0.06)",
                 }}
               >
-                <div
-                  className="w-2 h-2 rounded-full"
-                  style={{
-                    backgroundColor: f.color,
-                    boxShadow: isActive ? `0 0 8px ${f.color}60` : "none",
-                  }}
-                />
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: f.color, boxShadow: isActive ? `0 0 8px ${f.color}60` : "none" }} />
                 {f.label}
-                <span
-                  className="text-[9px] px-1.5 py-0.5 rounded-md"
-                  style={{
-                    backgroundColor: isActive ? `${f.color}30` : "rgba(255,255,255,0.04)",
-                    color: isActive ? f.color : "#6b7280",
-                  }}
-                >
+                <span className="text-[9px] px-1.5 py-0.5 rounded-md" style={{ backgroundColor: isActive ? `${f.color}30` : "rgba(255,255,255,0.04)", color: isActive ? f.color : "#6b7280" }}>
                   {count}
                 </span>
               </button>
@@ -252,7 +216,6 @@ export function CannabinoidLegalStatus() {
           })}
         </div>
 
-        {/* Cards grid */}
         <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <AnimatePresence mode="popLayout">
             {filtered.map((s, i) => (
@@ -288,7 +251,7 @@ export function CannabinoidLegalStatus() {
           className="mt-6 px-4 py-3 rounded-lg border border-white/[0.04] bg-white/[0.01]"
         >
           <p className="text-[10px] font-mono text-gray-600 leading-relaxed">
-            ※ 本情報は2026年3月時点の法令に基づく参考情報です。指定薬物は随時追加・変更される可能性があります。最新の規制情報は厚生労働省の公式発表をご確認ください。
+            ※ 本情報は2026年3月時点の法令に基づく参考情報です。規制物質は随時追加・変更される可能性があります。最新の規制情報は厚生労働省の公式発表をご確認ください。
           </p>
         </motion.div>
       </div>
