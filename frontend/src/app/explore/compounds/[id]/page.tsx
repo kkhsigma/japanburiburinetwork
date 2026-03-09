@@ -10,6 +10,7 @@ import { ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import Link from "next/link";
 import { CompoundStateTransition } from "@/types";
+import { TrackButton } from "@/components/tracking/TrackButton";
 
 // Mock timeline data
 const mockTimelines: Record<string, CompoundStateTransition[]> = {
@@ -101,7 +102,10 @@ export default function CompoundDetailPage({ params }: { params: { id: string } 
                 {compound.aliases.join(" / ")}
               </p>
             </div>
-            <StatusIndicator riskLevel={compound.risk_level} />
+            <div className="flex items-center gap-3">
+              <TrackButton compound={{ id: compound.id, name: compound.name }} size="md" />
+              <StatusIndicator riskLevel={compound.risk_level} />
+            </div>
           </div>
 
           <div className="flex items-center gap-3 mb-4">

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
 import { Compound, LegalStatus, RiskLevel } from "@/types";
+import { TrackButton } from "@/components/tracking/TrackButton";
 
 interface CompoundCardProps {
   compound: Compound;
@@ -85,9 +86,12 @@ export function CompoundCard({ compound }: CompoundCardProps) {
         </p>
 
         {/* Footer */}
-        <p className="text-[11px] text-[#64748b] font-mono">
-          Updated {format(new Date(compound.legal_status_updated_at), "MMM d, yyyy")}
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] text-[#64748b] font-mono">
+            Updated {format(new Date(compound.legal_status_updated_at), "MMM d, yyyy")}
+          </p>
+          <TrackButton compound={{ id: compound.id, name: compound.name }} size="sm" />
+        </div>
       </motion.div>
     </Link>
   );

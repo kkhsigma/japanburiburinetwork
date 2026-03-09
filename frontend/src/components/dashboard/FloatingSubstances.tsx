@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Search, X } from "lucide-react";
 import { mockCompounds } from "@/lib/mock-data";
 import type { RiskLevel, LegalStatus } from "@/types";
+import { useWatchlistStore } from "@/stores/watchlistStore";
 
 const riskConfig: Record<RiskLevel, { label: string; color: string; bg: string; border: string; glow: string }> = {
   illegal:  { label: "違法",     color: "text-red-600",     bg: "bg-red-500/10",     border: "border-red-400/30",     glow: "shadow-red-500/5" },
@@ -48,12 +49,14 @@ const families = Array.from(new Set(mockCompounds.map((c) => c.chemical_family ?
 const navItems = [
   { label: "モニター", href: "/universe", active: true },
   { label: "アラート", href: "/alerts" },
+  { label: "ウォッチリスト", href: "/watchlist" },
   { label: "物質DB", href: "/explore" },
   { label: "タイムライン", href: "#timeline" },
   { label: "ソース", href: "#sources" },
 ];
 
 export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolean }) {
+  const watchlistEntries = useWatchlistStore((s) => s.entries);
   const [filterMode, setFilterMode] = useState<FilterMode>("none");
   const [filterValue, setFilterValue] = useState<FilterValue | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -531,6 +534,9 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[13px] font-bold font-mono text-gray-900 tracking-tight">{compound.name}</span>
                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${risk.bg} ${risk.color} tracking-wide`}>{risk.label}</span>
+                {watchlistEntries.some(e => e.entity_id === compound.id) && (
+                  <span className="w-2 h-2 rounded-full bg-[#1a9a8a] shadow-[0_0_4px_rgba(26,154,138,0.6)]" title="追跡中" />
+                )}
               </div>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">

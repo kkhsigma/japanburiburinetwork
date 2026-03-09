@@ -7,6 +7,7 @@ import { Search, X, Sun, Moon } from "lucide-react";
 const navItems = [
   { label: "モニター", href: "/universe", active: true },
   { label: "アラート", href: "/alerts" },
+  { label: "ウォッチリスト", href: "/watchlist" },
   { label: "物質DB", href: "/explore" },
   { label: "タイムライン", href: "#timeline" },
   { label: "ソース", href: "#sources" },

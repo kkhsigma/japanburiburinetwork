@@ -13,9 +13,11 @@ interface WatchlistState {
   setHighlights: (highlights: WatchlistHighlight[]) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  isTracked: (entityId: string) => boolean;
+  toggleNotification: (id: string) => void;
 }
 
-export const useWatchlistStore = create<WatchlistState>((set) => ({
+export const useWatchlistStore = create<WatchlistState>((set, get) => ({
   entries: [],
   highlights: [],
   isLoading: false,
@@ -29,4 +31,12 @@ export const useWatchlistStore = create<WatchlistState>((set) => ({
   setHighlights: (highlights) => set({ highlights }),
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
+  isTracked: (entityId: string) =>
+    get().entries.some((e) => e.entity_id === entityId),
+  toggleNotification: (id: string) =>
+    set((state) => ({
+      entries: state.entries.map((e) =>
+        e.id === id ? { ...e, notification_enabled: !e.notification_enabled } : e
+      ),
+    })),
 }));

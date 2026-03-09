@@ -5,6 +5,7 @@ import {
   removeFromWatchlist,
   fetchWatchlistHighlights,
 } from '@/lib/api';
+import { mockWatchlist, mockWatchlistHighlights } from '@/lib/mock-data';
 import { useWatchlistStore } from '@/stores/watchlistStore';
 import type { WatchlistEntry } from '@/types';
 
@@ -12,6 +13,9 @@ export function useWatchlist() {
   return useQuery({
     queryKey: ['watchlist'],
     queryFn: fetchWatchlist,
+    placeholderData: () => ({
+      data: mockWatchlist,
+    }),
   });
 }
 
@@ -19,7 +23,10 @@ export function useWatchlistHighlights() {
   return useQuery({
     queryKey: ['watchlist', 'highlights'],
     queryFn: fetchWatchlistHighlights,
-    refetchInterval: 120000, // Refetch every 2 min
+    refetchInterval: 120000,
+    placeholderData: () => ({
+      data: mockWatchlistHighlights,
+    }),
   });
 }
 
@@ -29,7 +36,6 @@ export function useAddToWatchlist() {
 
   return useMutation({
     mutationFn: addToWatchlist,
-    // Optimistic update
     onMutate: async (newEntry) => {
       await queryClient.cancelQueries({ queryKey: ['watchlist'] });
       const optimisticEntry: WatchlistEntry = {
