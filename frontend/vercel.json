@@ -2,9 +2,5 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
-  "installCommand": "npm install",
-  "env": {
-    "NEXT_PUBLIC_API_URL": "@jbn-api-url",
-    "NEXT_PUBLIC_VAPID_PUBLIC_KEY": "@jbn-vapid-public-key"
-  }
+  "installCommand": "npm install"
 }
