@@ -25,7 +25,7 @@ export default function Page() {
       setTransitionState("navigate");
       // Full page navigation — avoids client-side mount conflicts
       window.location.href = "/universe";
-    }, 3800);
+    }, 4400);
   }, [transitionState]);
 
   return (

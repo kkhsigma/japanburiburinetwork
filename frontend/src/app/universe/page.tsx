@@ -18,6 +18,7 @@ export default function UniversePage() {
   const [pendingTheme, setPendingTheme] = useState<"dark" | "light" | null>(null);
   const [skipIntro, setSkipIntro] = useState(true); // default to skip, check localStorage on mount
   const [canvasKey, setCanvasKey] = useState(0); // remount canvas for replay
+  const [entryFade, setEntryFade] = useState(true); // fade-in from transition
 
   useEffect(() => {
     try {
@@ -26,6 +27,9 @@ export default function UniversePage() {
     } catch {
       setSkipIntro(false);
     }
+    // Fade out the entry overlay after mount
+    const timer = setTimeout(() => setEntryFade(false), 100);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleToggleTheme = useCallback(() => {
@@ -56,6 +60,17 @@ export default function UniversePage() {
       className="relative min-h-screen transition-colors duration-700"
       style={{ background: isDark ? "#02060c" : "#f5f6f8" }}
     >
+      {/* Entry fade overlay — smooth transition from black hole animation */}
+      <div
+        className="fixed inset-0 z-[100] pointer-events-none transition-opacity"
+        style={{
+          backgroundColor: "#06090f",
+          opacity: entryFade ? 1 : 0,
+          transitionDuration: "1.2s",
+          transitionTimingFunction: "cubic-bezier(0.25, 0.4, 0.25, 1)",
+        }}
+      />
+
       {/* Star field + particles — full-page background layer */}
       <StarField theme={theme} />
 
@@ -86,7 +101,7 @@ export default function UniversePage() {
             title="イントロを再生"
           >
             <RotateCcw size={10} />
-            <span className="hidden sm:inline">Replay</span>
+            <span className="hidden sm:inline">再生</span>
           </motion.button>
         )}
       </div>

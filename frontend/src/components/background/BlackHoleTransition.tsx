@@ -143,17 +143,29 @@ export function BlackHoleTransition({ transitionState }: BlackHoleTransitionProp
           const eased = easeOutCubic(seedProgress);
           const seedRadius = eased * 10;
 
-          // Outer glow
+          // Outer glow — layered for depth
+          const outerR = seedRadius + 60 * eased;
           const glowGrad = ctx.createRadialGradient(
             cx, cy, seedRadius,
-            cx, cy, seedRadius + 40 * eased
+            cx, cy, outerR
           );
-          glowGrad.addColorStop(0, `rgba(26, 154, 138, ${eased * 0.4})`);
-          glowGrad.addColorStop(0.5, `rgba(80, 40, 180, ${eased * 0.15})`);
+          glowGrad.addColorStop(0, `rgba(180, 255, 245, ${eased * 0.5})`);
+          glowGrad.addColorStop(0.25, `rgba(26, 154, 138, ${eased * 0.4})`);
+          glowGrad.addColorStop(0.55, `rgba(80, 40, 180, ${eased * 0.18})`);
           glowGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
           ctx.beginPath();
-          ctx.arc(cx, cy, seedRadius + 40 * eased, 0, Math.PI * 2);
+          ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
           ctx.fillStyle = glowGrad;
+          ctx.fill();
+
+          // Inner hot ring
+          const innerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, seedRadius + 5);
+          innerGlow.addColorStop(0, `rgba(255, 255, 255, ${eased * 0.6})`);
+          innerGlow.addColorStop(0.6, `rgba(26, 154, 138, ${eased * 0.3})`);
+          innerGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+          ctx.beginPath();
+          ctx.arc(cx, cy, seedRadius + 5, 0, Math.PI * 2);
+          ctx.fillStyle = innerGlow;
           ctx.fill();
 
           // Dark seed
@@ -178,30 +190,32 @@ export function BlackHoleTransition({ transitionState }: BlackHoleTransitionProp
         ctx.fillStyle = vigGrad;
         ctx.fillRect(0, 0, w, h);
 
-        const holeRadius = 10 + eased * 45;
-        const rotation = timeRef.current * 0.025;
+        const holeRadius = 10 + eased * 50;
+        const rotation = timeRef.current * 0.02;
 
         // Accretion disk rings (drawn as tilted ellipses)
         ctx.save();
         ctx.translate(cx, cy);
 
-        for (let ring = 4; ring >= 0; ring--) {
-          const diskRadius = holeRadius + 12 + ring * 10;
-          const ringAlpha = (0.2 - ring * 0.035) * eased;
-          const tilt = 0.28 + ring * 0.04;
+        for (let ring = 6; ring >= 0; ring--) {
+          const diskRadius = holeRadius + 14 + ring * 9;
+          const ringAlpha = (0.25 - ring * 0.03) * eased;
+          const tilt = 0.25 + ring * 0.035;
 
           ctx.save();
-          ctx.rotate(rotation + ring * 0.4);
+          ctx.rotate(rotation + ring * 0.35);
           ctx.scale(1, tilt);
 
           ctx.beginPath();
           ctx.arc(0, 0, diskRadius, 0, Math.PI * 2);
 
-          const isTeal = ring < 3;
-          ctx.strokeStyle = isTeal
-            ? `rgba(26, 154, 138, ${ringAlpha})`
-            : `rgba(100, 50, 200, ${ringAlpha * 0.7})`;
-          ctx.lineWidth = 2.5 - ring * 0.3;
+          // Color gradient: inner rings hot teal, outer rings purple
+          const ringT = ring / 6;
+          const r = Math.round(26 + ringT * 74);
+          const g = Math.round(154 - ringT * 114);
+          const b = Math.round(138 + ringT * 62);
+          ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${ringAlpha})`;
+          ctx.lineWidth = 3 - ring * 0.3;
           ctx.stroke();
 
           ctx.restore();
@@ -211,15 +225,16 @@ export function BlackHoleTransition({ transitionState }: BlackHoleTransitionProp
 
         // Photon ring — bright thin ring at the edge of the event horizon
         const photonGrad = ctx.createRadialGradient(
-          cx, cy, holeRadius - 1,
-          cx, cy, holeRadius + 18
+          cx, cy, holeRadius - 2,
+          cx, cy, holeRadius + 24
         );
-        photonGrad.addColorStop(0, `rgba(220, 255, 245, ${eased * 0.7})`);
-        photonGrad.addColorStop(0.2, `rgba(26, 154, 138, ${eased * 0.5})`);
-        photonGrad.addColorStop(0.5, `rgba(80, 40, 180, ${eased * 0.2})`);
+        photonGrad.addColorStop(0, `rgba(255, 255, 255, ${eased * 0.5})`);
+        photonGrad.addColorStop(0.1, `rgba(220, 255, 245, ${eased * 0.8})`);
+        photonGrad.addColorStop(0.3, `rgba(26, 154, 138, ${eased * 0.5})`);
+        photonGrad.addColorStop(0.6, `rgba(80, 40, 180, ${eased * 0.2})`);
         photonGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.beginPath();
-        ctx.arc(cx, cy, holeRadius + 18, 0, Math.PI * 2);
+        ctx.arc(cx, cy, holeRadius + 24, 0, Math.PI * 2);
         ctx.fillStyle = photonGrad;
         ctx.fill();
 
@@ -293,7 +308,7 @@ export function BlackHoleTransition({ transitionState }: BlackHoleTransitionProp
 
       // ── SUPERNOVA: multi-phase white explosion ──
       if (state === "supernova") {
-        const duration = 1700;
+        const duration = 2200;
         const progress = Math.min(elapsed / duration, 1);
         const maxDim = Math.sqrt(w * w + h * h);
         const streaks = streaksRef.current;
@@ -488,34 +503,65 @@ export function BlackHoleTransition({ transitionState }: BlackHoleTransitionProp
           ctx.fillRect(cx - vFlareWidth / 2, cy - vFlareHeight / 2, vFlareWidth, vFlareHeight);
         }
 
-        // ─── Phase 5 (40–100%): White wash flood ───
+        // ─── Phase 5 (40–100%): Cinematic wash — teal flash → white → fade to deep space ───
         if (progress > 0.40) {
           const p = (progress - 0.40) / 0.60;
-          const washEased = easeInOutCubic(p);
+          const washEased = easeInOutCubic(Math.min(p * 1.3, 1));
 
-          // Radial white flood expanding from center
-          const floodRadius = washEased * maxDim;
-          const floodGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, floodRadius);
-          floodGrad.addColorStop(0, `rgba(255, 255, 255, ${washEased})`);
-          floodGrad.addColorStop(0.6, `rgba(255, 255, 255, ${washEased * 0.9})`);
-          floodGrad.addColorStop(1, `rgba(255, 255, 255, ${washEased * 0.5})`);
-          ctx.beginPath();
-          ctx.arc(cx, cy, floodRadius, 0, Math.PI * 2);
-          ctx.fillStyle = floodGrad;
-          ctx.fill();
+          // Stage A (0–40%): Teal-white energy flood expanding from center
+          if (p < 0.4) {
+            const sp = p / 0.4;
+            const floodRadius = easeOutQuint(sp) * maxDim * 0.8;
+            const floodGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, floodRadius);
+            floodGrad.addColorStop(0, `rgba(255, 255, 255, ${sp})`);
+            floodGrad.addColorStop(0.3, `rgba(200, 255, 245, ${sp * 0.9})`);
+            floodGrad.addColorStop(0.6, `rgba(26, 154, 138, ${sp * 0.5})`);
+            floodGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+            ctx.beginPath();
+            ctx.arc(cx, cy, floodRadius, 0, Math.PI * 2);
+            ctx.fillStyle = floodGrad;
+            ctx.fill();
+          }
 
-          // Final flat overlay for complete coverage
-          if (p > 0.5) {
-            const flatAlpha = (p - 0.5) / 0.5;
-            ctx.fillStyle = `rgba(255, 255, 255, ${flatAlpha})`;
+          // Stage B (30–65%): Full white bloom
+          if (p >= 0.30 && p < 0.65) {
+            const sp = (p - 0.30) / 0.35;
+            const whiteAlpha = sp < 0.5 ? easeOutCubic(sp * 2) : 1;
+            ctx.fillStyle = `rgba(255, 255, 255, ${whiteAlpha})`;
             ctx.fillRect(0, 0, w, h);
+          }
+
+          // Stage C (60–100%): White fades through teal to deep space
+          if (p >= 0.60) {
+            const sp = (p - 0.60) / 0.40;
+            const fadeEased = easeInOutCubic(sp);
+
+            // Interpolate: white → teal tint → deep space dark
+            const r = Math.round(255 - fadeEased * 249); // 255 → 6
+            const g = Math.round(255 - fadeEased * 246); // 255 → 9
+            const b = Math.round(255 - fadeEased * 240); // 255 → 15
+            ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+            ctx.fillRect(0, 0, w, h);
+
+            // Subtle teal vignette during the fade
+            if (sp > 0.2 && sp < 0.8) {
+              const tealP = sp < 0.5 ? (sp - 0.2) / 0.3 : (0.8 - sp) / 0.3;
+              const vigGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxDim * 0.5);
+              vigGrad.addColorStop(0, `rgba(26, 154, 138, ${tealP * 0.08})`);
+              vigGrad.addColorStop(0.5, `rgba(26, 154, 138, ${tealP * 0.04})`);
+              vigGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+              ctx.beginPath();
+              ctx.arc(cx, cy, maxDim * 0.5, 0, Math.PI * 2);
+              ctx.fillStyle = vigGrad;
+              ctx.fill();
+            }
           }
         }
       }
 
-      // ── NAVIGATE: full white ──
+      // ── NAVIGATE: deep space (matches universe page bg) ──
       if (state === "navigate") {
-        ctx.fillStyle = "#fff";
+        ctx.fillStyle = "#06090f";
         ctx.fillRect(0, 0, w, h);
       }
 

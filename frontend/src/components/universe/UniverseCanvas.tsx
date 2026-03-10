@@ -47,7 +47,7 @@ function fbm3d(x: number, y: number, z: number, octaves: number): number {
 // ─── Equirectangular Planet Texture ─────────────────────
 
 function generatePlanetMap(worldId: string): HTMLCanvasElement {
-  const W = 512, H = 256;
+  const W = 1024, H = 512;
   const cvs = document.createElement("canvas");
   cvs.width = W;
   cvs.height = H;
@@ -525,8 +525,16 @@ const ATMO_FRAG = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vViewDir;
   void main() {
-    float fresnel = pow(1.0 - abs(dot(vNormal, vViewDir)), 3.5);
-    gl_FragColor = vec4(uColor * uIntensity, fresnel * 0.65);
+    float ndv = abs(dot(vNormal, vViewDir));
+    // Layered Fresnel — tight rim + soft outer haze
+    float rimTight = pow(1.0 - ndv, 5.0);
+    float rimSoft = pow(1.0 - ndv, 2.5);
+    float fresnel = rimTight * 0.7 + rimSoft * 0.3;
+    // Color shift — hotter (brighter) at edge, base color further out
+    vec3 hotColor = uColor * uIntensity * 1.6 + vec3(0.15, 0.12, 0.08);
+    vec3 baseColor = uColor * uIntensity;
+    vec3 col = mix(baseColor, hotColor, rimTight);
+    gl_FragColor = vec4(col, fresnel * 0.75);
   }
 `;
 
@@ -540,14 +548,14 @@ function Atmosphere({
   const uniforms = useMemo(
     () => ({
       uColor: { value: new THREE.Color(color) },
-      uIntensity: { value: 1.8 },
+      uIntensity: { value: 2.2 },
     }),
     [color]
   );
 
   return (
     <mesh>
-      <sphereGeometry args={[radius * 1.22, 32, 32]} />
+      <sphereGeometry args={[radius * 1.35, 48, 48]} />
       <shaderMaterial
         transparent
         side={THREE.BackSide}
@@ -753,11 +761,12 @@ function PlanetNode({
         }}
         scale={hovered ? 1.1 : 1}
       >
-        <sphereGeometry args={[world.radius, 64, 32]} />
+        <sphereGeometry args={[world.radius, 128, 64]} />
         <meshStandardMaterial
           map={texture}
-          roughness={0.65}
-          metalness={0.05}
+          roughness={0.45}
+          metalness={0.12}
+          envMapIntensity={0.6}
         />
       </mesh>
 
@@ -779,23 +788,28 @@ function PlanetNode({
           <div
             style={{
               color: hovered
-                ? "rgba(255,255,255,0.95)"
-                : "rgba(232,236,241,0.8)",
+                ? "rgba(255,255,255,0.97)"
+                : "rgba(232,236,241,0.85)",
               fontSize: "14px",
-              fontWeight: 600,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
               fontFamily: "system-ui, -apple-system, sans-serif",
-              textShadow: "0 0 12px rgba(0,0,0,0.8)",
-              transition: "color 0.2s",
+              textShadow: hovered
+                ? `0 0 20px ${world.glowColor}60, 0 0 40px ${world.glowColor}25, 0 2px 8px rgba(0,0,0,0.8)`
+                : "0 0 12px rgba(0,0,0,0.8), 0 2px 6px rgba(0,0,0,0.6)",
+              transition: "all 0.3s ease",
             }}
           >
             {world.label}
           </div>
           <div
             style={{
-              color: "rgba(232,236,241,0.35)",
+              color: hovered ? "rgba(232,236,241,0.5)" : "rgba(232,236,241,0.3)",
               fontSize: "10px",
               fontFamily: "ui-monospace, monospace",
+              letterSpacing: "0.08em",
               textShadow: "0 0 8px rgba(0,0,0,0.8)",
+              transition: "color 0.3s ease",
             }}
           >
             {world.sublabel}
@@ -1619,7 +1633,7 @@ function CentralHub() {
 
   return (
     <group>
-      {/* Core golden sun */}
+      {/* Core golden sun — brighter, more intense */}
       <mesh
         onClick={(e) => {
           e.stopPropagation();
@@ -1636,23 +1650,38 @@ function CentralHub() {
         }}
         scale={hovered ? 1.15 : 1}
       >
-        <sphereGeometry args={[0.65, 32, 32]} />
+        <sphereGeometry args={[0.65, 48, 48]} />
         <meshBasicMaterial
-          color={new THREE.Color(3, 2.2, 0.6)}
+          color={new THREE.Color(4, 2.8, 0.8)}
           toneMapped={false}
         />
       </mesh>
 
-      {/* Corona glow */}
+      {/* Inner corona — hot white-gold */}
       <mesh>
-        <sphereGeometry args={[1.8, 32, 32]} />
+        <sphereGeometry args={[1.1, 32, 32]} />
         <meshBasicMaterial
-          color={new THREE.Color(1.2, 0.9, 0.2)}
+          color={new THREE.Color(2.5, 1.8, 0.5)}
           transparent
-          opacity={0.04}
+          opacity={0.08}
           side={THREE.BackSide}
           toneMapped={false}
           depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </mesh>
+
+      {/* Outer corona — wider, softer glow */}
+      <mesh>
+        <sphereGeometry args={[2.2, 32, 32]} />
+        <meshBasicMaterial
+          color={new THREE.Color(1.2, 0.9, 0.2)}
+          transparent
+          opacity={0.035}
+          side={THREE.BackSide}
+          toneMapped={false}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
         />
       </mesh>
 
@@ -1670,23 +1699,24 @@ function CentralHub() {
         <div style={{ textAlign: "center" }}>
           <div
             style={{
-              color: "rgba(255,240,200,0.85)",
+              color: "rgba(255,240,200,0.9)",
               fontSize: "16px",
               fontWeight: "bold",
               fontFamily: "system-ui, -apple-system, sans-serif",
-              textShadow: "0 0 16px rgba(255,200,50,0.4)",
+              textShadow: "0 0 20px rgba(255,200,50,0.5), 0 0 40px rgba(255,180,30,0.2)",
             }}
           >
             JBN
           </div>
           <div
             style={{
-              color: "rgba(255,240,200,0.35)",
+              color: "rgba(255,240,200,0.4)",
               fontSize: "9px",
               fontFamily: "ui-monospace, monospace",
+              textShadow: "0 0 8px rgba(255,200,50,0.2)",
             }}
           >
-            Central Hub
+            セントラルハブ
           </div>
         </div>
       </Html>
@@ -1845,17 +1875,25 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
       <color attach="background" args={[isLight ? "#1a1a2e" : "#02060c"]} />
       <fog attach="fog" args={[isLight ? "#1a1a2e" : "#02060c", isLight ? 50 : 40, 120]} />
 
-      {/* Lighting */}
-      <ambientLight intensity={isLight ? 0.55 : 0.18} color={isLight ? "#aabbdd" : "#8899bb"} />
+      {/* Lighting — cinematic three-point setup */}
+      <ambientLight intensity={isLight ? 0.5 : 0.12} color={isLight ? "#aabbdd" : "#8899bb"} />
+      {/* Key light — warm, strong, from upper-left */}
       <directionalLight
         position={[-10, 8, 10]}
-        intensity={isLight ? 2.2 : 1.6}
-        color="#fff8ee"
+        intensity={isLight ? 2.4 : 2.0}
+        color="#fff4e0"
       />
+      {/* Fill light — cool, softer, from opposite side */}
       <directionalLight
-        position={[5, -3, -8]}
-        intensity={isLight ? 0.4 : 0.15}
-        color={isLight ? "#8899cc" : "#6688aa"}
+        position={[8, -2, -8]}
+        intensity={isLight ? 0.5 : 0.3}
+        color={isLight ? "#8899cc" : "#4466aa"}
+      />
+      {/* Rim/backlight — edge definition, from behind */}
+      <directionalLight
+        position={[0, 4, -14]}
+        intensity={isLight ? 0.8 : 0.6}
+        color={isLight ? "#aaccff" : "#3355aa"}
       />
       {isLight && (
         <directionalLight
@@ -1864,6 +1902,8 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
           color="#ccbbff"
         />
       )}
+      {/* Point light at origin (sun) for local illumination */}
+      <pointLight position={[0, 0, 0]} intensity={isLight ? 1.5 : 2.0} color="#ffc830" distance={25} decay={2} />
 
       {/* Starfield */}
       <Stars
