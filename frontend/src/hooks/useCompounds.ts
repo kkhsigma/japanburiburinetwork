@@ -19,7 +19,7 @@ export function useCompound(id: string) {
     enabled: !!id,
     placeholderData: () => {
       const compound = mockCompounds.find((c) => c.id === id);
-      return compound ? { data: compound, timeline: [] } : undefined;
+      return compound ? { data: compound, timeline: [], related_alerts: [], sources: [] } : undefined;
     },
   });
 }

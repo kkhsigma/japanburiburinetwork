@@ -1,44 +1,27 @@
 import { Router } from 'express';
-import { pool } from '../db/index.js';
+import { executeSearch, emptyCategorizedResults } from '../services/searchService.js';
 
 const router = Router();
 
-// GET /api/search?q= - Universal search across compounds, alerts, products
+// GET /api/search?q=<query>&limit=<n> - Full-text search across all tables
 router.get('/', async (req, res, next) => {
   try {
     const query = (req.query.q as string || '').trim();
+
     if (!query) {
-      return res.json({ data: { compounds: [], alerts: [], products: [] } });
+      return res.json({ data: emptyCategorizedResults() });
     }
 
-    const searchPattern = `%${query}%`;
+    if (query.length > 200) {
+      return res.status(400).json({ error: 'Query must be 200 characters or fewer' });
+    }
 
-    const [compoundsResult, alertsResult] = await Promise.all([
-      pool.query(
-        `SELECT id, name, aliases, legal_status_japan, risk_level
-         FROM compounds
-         WHERE name ILIKE $1 OR aliases::text ILIKE $1
-         ORDER BY name ASC
-         LIMIT 10`,
-        [searchPattern]
-      ),
-      pool.query(
-        `SELECT id, title, severity, category, status, published_at, compounds
-         FROM alerts
-         WHERE title ILIKE $1 OR summary_what ILIKE $1 OR compounds::text ILIKE $1
-         ORDER BY importance_score DESC
-         LIMIT 10`,
-        [searchPattern]
-      ),
-    ]);
+    const rawLimit = parseInt(req.query.limit as string, 10);
+    const limit = Math.min(Math.max(rawLimit || 20, 1), 50);
 
-    res.json({
-      data: {
-        compounds: compoundsResult.rows,
-        alerts: alertsResult.rows,
-        products: [], // v1: product search
-      },
-    });
+    const results = await executeSearch(query, limit);
+
+    res.json({ data: results });
   } catch (err) {
     next(err);
   }

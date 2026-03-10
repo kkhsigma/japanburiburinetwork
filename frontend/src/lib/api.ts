@@ -4,11 +4,11 @@ import type {
   AlertFilters,
   Compound,
   CompoundDetailResponse,
+  HybridSearchResult,
   PaginatedResponse,
   DetailResponse,
   WatchlistEntry,
   WatchlistHighlight,
-  SearchResult,
   UpdateCard,
   UserSettings,
 } from '@/types';
@@ -79,9 +79,16 @@ export async function fetchWatchlistHighlights(): Promise<DetailResponse<Watchli
 }
 
 // --- Search ---
-export async function fetchSearch(query: string): Promise<DetailResponse<SearchResult>> {
-  const { data } = await apiClient.get<DetailResponse<SearchResult>>(`/search?q=${encodeURIComponent(query)}`);
+export async function fetchSearch(query: string, limit?: number): Promise<{ data: HybridSearchResult }> {
+  const params = new URLSearchParams({ q: query });
+  if (limit) params.set('limit', String(limit));
+  const { data } = await apiClient.get(`/search?${params}`);
   return data;
+}
+
+export function getAskJbnStreamUrl(): string {
+  const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+  return `${base}/ask-jbn`;
 }
 
 // --- Updates (Intro) ---

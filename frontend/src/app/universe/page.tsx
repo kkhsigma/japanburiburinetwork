@@ -6,7 +6,8 @@ import { RotateCcw } from "lucide-react";
 import { UniverseCanvas } from "@/components/universe/UniverseCanvas";
 import { NavBar } from "@/components/universe/NavBar";
 import { SunRayTransition } from "@/components/universe/SunRayTransition";
-import { FloatingSubstances } from "@/components/dashboard/FloatingSubstances";
+import { StarField } from "@/components/universe/StarField";
+import { StatusBar } from "@/components/universe/StatusBar";
 import { LatestAlerts } from "@/components/dashboard/LatestAlerts";
 import { RegulationTimeline } from "@/components/dashboard/RegulationTimeline";
 import { MonitoredSources } from "@/components/dashboard/MonitoredSources";
@@ -55,23 +56,11 @@ export default function UniversePage() {
       className="relative min-h-screen transition-colors duration-700"
       style={{ background: isDark ? "#02060c" : "#f5f6f8" }}
     >
+      {/* Star field + particles — full-page background layer */}
+      <StarField theme={theme} />
+
       {/* Fixed navbar */}
       <NavBar theme={theme} onToggleTheme={handleToggleTheme} />
-
-      {/* Replay intro button — bottom right corner */}
-      {skipIntro && (
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1, duration: 0.5 }}
-          onClick={handleReplayIntro}
-          className="fixed bottom-4 right-4 z-50 inline-flex items-center gap-1.5 text-[10px] font-mono text-gray-600 hover:text-amber-400 transition-colors px-3 py-1.5 rounded-lg border border-white/[0.06] bg-[#020810]/80 backdrop-blur-sm"
-          title="イントロを再生"
-        >
-          <RotateCcw size={11} />
-          Replay Intro
-        </motion.button>
-      )}
 
       {/* Sun ray transition overlay */}
       <SunRayTransition
@@ -83,17 +72,40 @@ export default function UniversePage() {
       />
 
       {/* 3D Universe — always present at top */}
-      <div className="pt-12">
+      <div className="relative pt-12">
         <UniverseCanvas key={canvasKey} theme={theme} skipIntro={skipIntro} />
+        {/* Replay intro — ghost button, blends into canvas edge */}
+        {skipIntro && (
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.25 }}
+            whileHover={{ opacity: 1 }}
+            transition={{ delay: 2, duration: 0.6 }}
+            onClick={handleReplayIntro}
+            className="absolute bottom-3 right-4 z-20 inline-flex items-center gap-1 text-[9px] font-mono text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded"
+            title="イントロを再生"
+          >
+            <RotateCcw size={10} />
+            <span className="hidden sm:inline">Replay</span>
+          </motion.button>
+        )}
       </div>
 
-      {/* Dashboard content — always present below universe */}
+      {/* Gradient fade from canvas into dashboard */}
       <div
-        className="relative z-10 transition-colors duration-700"
-        style={{ background: isDark ? "#02060c" : "#f5f6f8" }}
-      >
-        <FloatingSubstances hideHeader />
+        className="relative z-10 h-24 -mt-24 pointer-events-none"
+        style={{
+          background: isDark
+            ? "linear-gradient(to bottom, transparent, #02060c)"
+            : "linear-gradient(to bottom, transparent, #f5f6f8)",
+        }}
+      />
 
+      {/* Live status bar — bridge between canvas and dashboard */}
+      <StatusBar />
+
+      {/* Dashboard content */}
+      <div className="relative z-10 space-y-8 pt-6 pb-16">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -118,8 +130,6 @@ export default function UniversePage() {
             </div>
           </div>
         </motion.div>
-
-        <div className="h-16" />
       </div>
     </div>
   );

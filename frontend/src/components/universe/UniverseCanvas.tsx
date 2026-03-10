@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo, useState, createContext, useContext, Fragment, Suspense } from "react";
+import { useRef, useMemo, useState, useEffect, createContext, useContext, Fragment, Suspense } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, Stars } from "@react-three/drei";
 import * as THREE from "three";
@@ -1802,6 +1802,19 @@ function IntroMarker() {
   return null;
 }
 
+/** Adjusts camera FOV based on viewport aspect ratio so planets always fit */
+function ResponsiveFov({ baseFov = 45 }: { baseFov?: number }) {
+  const { camera, size } = useThree();
+  useEffect(() => {
+    const aspect = size.width / size.height;
+    // Widen FOV on narrow/portrait screens, narrow it on ultra-wide
+    const fov = aspect < 1 ? baseFov + 25 : aspect < 1.4 ? baseFov + 10 : baseFov;
+    (camera as THREE.PerspectiveCamera).fov = fov;
+    (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+  }, [camera, size, baseFov]);
+  return null;
+}
+
 function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"; skipIntro?: boolean }) {
   const [travelTarget, setTravelTarget] = useState<string | null>(null);
   const router = useRouter();
@@ -1825,6 +1838,9 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
 
   return (
     <IntroContext.Provider value={{ skipIntro }}>
+      {/* Responsive FOV — widen on narrow screens so planets fit */}
+      <ResponsiveFov baseFov={45} />
+
       {/* Dynamic background */}
       <color attach="background" args={[isLight ? "#1a1a2e" : "#02060c"]} />
       <fog attach="fog" args={[isLight ? "#1a1a2e" : "#02060c", isLight ? 50 : 40, 120]} />

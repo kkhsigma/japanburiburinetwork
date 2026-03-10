@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS compounds (
 -- Alerts: Generated regulatory change events
 CREATE TABLE IF NOT EXISTS alerts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  title TEXT NOT NULL,
+  title TEXT NOT NULL UNIQUE,
   category alert_category NOT NULL,
   severity alert_severity NOT NULL,
   status alert_status NOT NULL DEFAULT 'pending',
@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS compound_state_history (
 -- THC Regulations: Threshold tracking per product category
 CREATE TABLE IF NOT EXISTS thc_regulations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  product_category TEXT NOT NULL,
+  product_category TEXT NOT NULL UNIQUE,
   max_thc_level TEXT NOT NULL,
   measurement_method TEXT,
   effective_date TIMESTAMPTZ,

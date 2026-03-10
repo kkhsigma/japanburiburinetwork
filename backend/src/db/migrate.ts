@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import pg from 'pg';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
 const { Client } = pg;
@@ -13,10 +13,16 @@ async function migrate() {
   await client.connect();
   console.log('Connected to database');
 
-  // When run with tsx, __dirname is available
-  const migrationPath = join(process.cwd(), 'src', 'db', 'migrations', '001_initial.sql');
-  const sql = readFileSync(migrationPath, 'utf-8');
-  await client.query(sql);
+  const migrationsDir = join(process.cwd(), 'src', 'db', 'migrations');
+  const files = readdirSync(migrationsDir)
+    .filter(f => f.endsWith('.sql'))
+    .sort();
+
+  for (const file of files) {
+    const sql = readFileSync(join(migrationsDir, file), 'utf-8');
+    await client.query(sql);
+    console.log(`Applied migration: ${file}`);
+  }
 
   console.log('Migration complete');
   await client.end();

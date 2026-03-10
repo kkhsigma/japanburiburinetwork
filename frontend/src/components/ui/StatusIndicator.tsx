@@ -41,7 +41,8 @@ export function StatusIndicator({
   showLabel = true,
   className = "",
 }: StatusIndicatorProps) {
-  const { color, ringColor, label } = config[riskLevel];
+  const key = (riskLevel?.toLowerCase() || 'low') as RiskLevel;
+  const { color, ringColor, label } = config[key] || config.low;
   return (
     <span className={`inline-flex items-center gap-2 ${className}`}>
       <span

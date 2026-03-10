@@ -7,27 +7,27 @@ import type { AlertSeverity } from "@/types";
 const severityConfig: Record<AlertSeverity, { label: string; border: string; dot: string; badge: string }> = {
   critical: {
     label: "CRITICAL",
-    border: "border-l-red-500",
+    border: "border-l-red-500/80",
     dot: "bg-red-500",
-    badge: "bg-red-500/10 text-red-600 border-red-500/20",
+    badge: "bg-red-500/15 text-red-400 border-red-500/25",
   },
   high: {
     label: "HIGH",
-    border: "border-l-orange-500",
+    border: "border-l-orange-500/80",
     dot: "bg-orange-500",
-    badge: "bg-orange-500/10 text-orange-600 border-orange-500/20",
+    badge: "bg-orange-500/15 text-orange-400 border-orange-500/25",
   },
   medium: {
     label: "MEDIUM",
-    border: "border-l-amber-500",
+    border: "border-l-amber-500/80",
     dot: "bg-amber-500",
-    badge: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+    badge: "bg-amber-500/15 text-amber-400 border-amber-500/25",
   },
   low: {
     label: "LOW",
-    border: "border-l-gray-300",
-    dot: "bg-gray-400",
-    badge: "bg-gray-500/10 text-gray-500 border-gray-500/15",
+    border: "border-l-gray-600",
+    dot: "bg-gray-500",
+    badge: "bg-gray-500/15 text-gray-400 border-gray-500/20",
   },
 };
 
@@ -37,12 +37,13 @@ function AlertRow({ alert, index }: { alert: DashboardAlert; index: number }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -6 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.3, delay: 0.15 + index * 0.05 }}
+      whileInView={{ opacity: 1, x: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.3, delay: 0.1 + index * 0.05 }}
       className={`
-        group bg-white/70 backdrop-blur-sm border border-black/[0.06] rounded-lg
+        group rounded-lg border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm
         border-l-[3px] ${config.border}
-        hover:bg-white hover:border-black/[0.1] hover:shadow-sm
+        hover:bg-white/[0.05] hover:border-white/[0.1]
         transition-all duration-200
       `}
     >
@@ -52,13 +53,13 @@ function AlertRow({ alert, index }: { alert: DashboardAlert; index: number }) {
           <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold font-mono tracking-wider border ${config.badge}`}>
             {config.label}
           </span>
-          <span className="text-[10px] text-gray-400 font-mono">{alert.date}</span>
-          <span className="text-[10px] text-gray-300">·</span>
-          <span className="text-[10px] text-gray-400">{alert.source}</span>
+          <span className="text-[10px] text-gray-500 font-mono">{alert.date}</span>
+          <span className="text-[10px] text-gray-600">·</span>
+          <span className="text-[10px] text-gray-500">{alert.source}</span>
         </div>
 
         {/* Title */}
-        <h3 className="text-[13px] font-semibold text-gray-900 leading-snug group-hover:text-teal-700 transition-colors">
+        <h3 className="text-[13px] font-semibold text-gray-200 leading-snug group-hover:text-teal-400 transition-colors">
           {alert.title}
         </h3>
 
@@ -69,12 +70,12 @@ function AlertRow({ alert, index }: { alert: DashboardAlert; index: number }) {
 
         {/* Footer: substance + action */}
         <div className="flex items-center justify-between mt-2">
-          <span className="text-[10px] font-mono text-gray-400">
-            対象: <span className="text-gray-600 font-semibold">{alert.substance}</span>
+          <span className="text-[10px] font-mono text-gray-500">
+            対象: <span className="text-gray-300 font-semibold">{alert.substance}</span>
           </span>
           <a
             href={`/alerts/${alert.id}`}
-            className="text-[10px] font-medium text-teal-600 hover:text-teal-700 transition-colors opacity-0 group-hover:opacity-100"
+            className="text-[10px] font-medium text-teal-500 hover:text-teal-400 transition-colors opacity-0 group-hover:opacity-100"
           >
             詳細 →
           </a>
@@ -90,14 +91,14 @@ export function LatestAlerts() {
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <span className="section-label font-mono">インシデントフィード</span>
-            <span className="text-[9px] font-mono text-gray-300 bg-gray-100 px-1.5 py-0.5 rounded">
+            <span className="text-[11px] font-semibold font-mono tracking-widest uppercase text-gray-400">インシデントフィード</span>
+            <span className="text-[9px] font-mono text-gray-500 bg-white/[0.04] px-1.5 py-0.5 rounded border border-white/[0.06]">
               {latestAlerts.length}件
             </span>
           </div>
           <a
             href="/alerts"
-            className="text-[11px] text-gray-400 hover:text-teal-600 transition-colors"
+            className="text-[11px] text-gray-500 hover:text-teal-400 transition-colors"
           >
             すべて見る →
           </a>

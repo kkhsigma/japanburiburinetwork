@@ -105,6 +105,34 @@ export interface SearchResult {
   products: unknown[];  // v1
 }
 
+export interface SearchResultItem {
+  id: string;
+  type: 'compound' | 'alert' | 'thc_regulation' | 'source' | 'government_notice' | 'designated_substance';
+  title: string;
+  subtitle: string | null;
+  rank: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface HybridSearchResult {
+  compounds: SearchResultItem[];
+  alerts: SearchResultItem[];
+  thc_regulations: SearchResultItem[];
+  sources: SearchResultItem[];
+  government_notices: SearchResultItem[];
+  designated_substances: SearchResultItem[];
+  total_count: number;
+  query: string;
+  search_mode: 'fulltext' | 'fuzzy';
+}
+
+export interface AskJbnResponse {
+  answer: string;
+  context: HybridSearchResult;
+}
+
+export type SearchMode = 'search' | 'ask';
+
 // --- Settings Types ---
 export type NotificationPreference = 'critical_only' | 'all';
 
@@ -141,9 +169,19 @@ export interface DetailResponse<T> {
   data: T;
 }
 
+export interface CompoundSource {
+  id: string;
+  name: string;
+  url: string;
+  source_type: string;
+  tier: string;
+}
+
 export interface CompoundDetailResponse {
   data: Compound;
   timeline: CompoundStateTransition[];
+  related_alerts: Alert[];
+  sources: CompoundSource[];
 }
 
 // --- Filter Types ---

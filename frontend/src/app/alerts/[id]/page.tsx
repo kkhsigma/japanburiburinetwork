@@ -6,8 +6,10 @@ import { ConfidenceLabel } from "@/components/ui/ConfidenceLabel";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { mockAlerts } from "@/lib/mock-data";
+import { TrackButton } from "@/components/tracking/TrackButton";
+import { mockAlerts, mockCompounds } from "@/lib/mock-data";
 import { useAlert } from "@/hooks/useAlerts";
+import { useWatchlistSync } from "@/hooks/useWatchlistSync";
 import { format } from "date-fns";
 import { ArrowLeft, ExternalLink, Calendar, AlertTriangle } from "lucide-react";
 import Link from "next/link";
@@ -18,33 +20,110 @@ const statusToLegalStatus = {
   official_confirmed: "official_confirmed" as const,
 };
 
+function DetailSkeleton() {
+  return (
+    <div className="min-h-screen bg-[#06090f]">
+      <header className="sticky top-0 z-40 bg-[#06090f]/80 backdrop-blur-xl border-b border-[#1e293b]/50">
+        <div className="max-w-3xl mx-auto px-4 md:px-6 flex items-center h-14 gap-4">
+          <Skeleton className="h-5 w-24" />
+        </div>
+      </header>
+      <div className="px-4 py-6 max-w-3xl mx-auto space-y-6">
+        <div className="rounded-xl border border-[#1e293b] bg-[#111827] p-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Skeleton className="h-5 w-12 rounded-full" />
+            <Skeleton className="h-5 w-16 rounded-full" />
+            <Skeleton className="h-5 w-20 rounded-full" />
+          </div>
+          <Skeleton className="h-7 w-3/4 mb-3" />
+          <Skeleton className="h-4 w-1/3" />
+        </div>
+        <div className="rounded-xl border border-[#1e293b] bg-[#111827] p-4">
+          <Skeleton className="h-4 w-24 mb-3" />
+          <Skeleton className="h-4 w-full mb-2" />
+          <Skeleton className="h-4 w-5/6" />
+        </div>
+        <div className="rounded-xl border border-[#1e293b] bg-[#111827] p-4">
+          <Skeleton className="h-4 w-28 mb-3" />
+          <Skeleton className="h-4 w-full mb-2" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="rounded-xl border border-[#1e293b] bg-[#111827] p-4">
+            <Skeleton className="h-4 w-20 mb-3" />
+            <div className="flex gap-2">
+              <Skeleton className="h-6 w-14 rounded" />
+              <Skeleton className="h-6 w-14 rounded" />
+              <Skeleton className="h-6 w-14 rounded" />
+            </div>
+          </div>
+          <div className="rounded-xl border border-[#1e293b] bg-[#111827] p-4">
+            <Skeleton className="h-4 w-24 mb-3" />
+            <div className="flex gap-2">
+              <Skeleton className="h-6 w-12 rounded" />
+              <Skeleton className="h-6 w-12 rounded" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AlertDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
+  useWatchlistSync();
 
   const alertQuery = useAlert(id);
   const alert = alertQuery.data?.data ?? mockAlerts.find((a) => a.id === id);
 
   if (alertQuery.isLoading) {
+    return <DetailSkeleton />;
+  }
+
+  if (alertQuery.isError) {
     return (
-      <div className="min-h-screen bg-[#06090f] px-4 py-6 max-w-3xl mx-auto space-y-4">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-48 w-full rounded-xl" />
-        <Skeleton className="h-24 w-full rounded-xl" />
-        <Skeleton className="h-24 w-full rounded-xl" />
+      <div className="min-h-screen bg-[#06090f] flex flex-col items-center justify-center px-4">
+        <AlertTriangle size={32} className="text-[#64748b] mb-4" />
+        <p className="text-[#94a3b8] text-sm mb-1">アラートの読み込みに失敗しました</p>
+        <p className="text-[#64748b] text-xs mb-4">Failed to load alert. Please try again.</p>
+        <Link
+          href="/alerts"
+          className="text-[#1a9a8a] hover:text-[#22b8a6] text-sm font-medium transition-colors"
+        >
+          &larr; アラートフィードに戻る
+        </Link>
       </div>
     );
   }
 
   if (!alert) {
     return (
-      <div className="min-h-screen bg-[#06090f] px-4 py-12 text-center">
-        <p className="text-gray-400">Alert not found.</p>
-        <Link href="/universe" className="text-[#1a9a8a] text-sm mt-2 inline-block">
-          Back to universe
+      <div className="min-h-screen bg-[#06090f] flex flex-col items-center justify-center px-4">
+        <AlertTriangle size={32} className="text-[#64748b] mb-4" />
+        <p className="text-[#94a3b8] text-sm mb-1">アラートが見つかりません</p>
+        <p className="text-[#64748b] text-xs mb-4">Alert not found.</p>
+        <Link
+          href="/alerts"
+          className="text-[#1a9a8a] hover:text-[#22b8a6] text-sm font-medium transition-colors"
+        >
+          &larr; アラートフィードに戻る
         </Link>
       </div>
     );
   }
+
+  // Match compounds in this alert to known compounds for TrackButton
+  const matchedCompounds = alert.compounds
+    .map((name) => {
+      const found = mockCompounds.find(
+        (c) =>
+          c.name.toLowerCase() === name.toLowerCase() ||
+          c.aliases.some((a) => a.toLowerCase() === name.toLowerCase())
+      );
+      return found ? { id: found.id, name: found.name, displayName: name } : null;
+    })
+    .filter(Boolean) as { id: string; name: string; displayName: string }[];
 
   return (
     <div className="min-h-screen bg-[#06090f]">
@@ -52,11 +131,11 @@ export default function AlertDetailPage({ params }: { params: { id: string } }) 
         <div className="max-w-3xl mx-auto px-4 md:px-6">
           <div className="flex items-center h-14 gap-4">
             <Link
-              href="/explore"
+              href="/alerts"
               className="flex items-center gap-2 text-[#64748b] hover:text-[#1a9a8a] transition-colors"
             >
               <ArrowLeft size={18} />
-              <span className="text-xs font-medium">探索に戻る</span>
+              <span className="text-xs font-medium">アラートフィード</span>
             </Link>
           </div>
         </div>
@@ -138,22 +217,47 @@ export default function AlertDetailPage({ params }: { params: { id: string } }) 
           </section>
         )}
 
-        {/* Affected compounds & product forms */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
+        {/* Affected compounds with TrackButtons */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           <Card className="p-4">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              Compounds
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+              Compounds ({alert.compounds.length})
             </h3>
-            <div className="flex flex-wrap gap-1.5">
-              {alert.compounds.map((c) => (
-                <span key={c} className="px-2 py-0.5 bg-navy-600 text-gray-300 text-xs rounded font-medium">
-                  {c}
-                </span>
-              ))}
+            <div className="space-y-2">
+              {alert.compounds.map((compoundName) => {
+                const matched = matchedCompounds.find(
+                  (m) => m.displayName === compoundName || m.name === compoundName
+                );
+                return (
+                  <div
+                    key={compoundName}
+                    className="flex items-center justify-between"
+                  >
+                    {matched ? (
+                      <Link
+                        href={`/explore/compounds/${matched.id}`}
+                        className="text-sm text-gray-300 hover:text-[#1a9a8a] transition-colors font-medium"
+                      >
+                        {compoundName}
+                      </Link>
+                    ) : (
+                      <span className="text-sm text-gray-300 font-medium">
+                        {compoundName}
+                      </span>
+                    )}
+                    {matched && (
+                      <TrackButton
+                        compound={{ id: matched.id, name: matched.name }}
+                        size="sm"
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </Card>
           <Card className="p-4">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
               Product Forms
             </h3>
             <div className="flex flex-wrap gap-1.5">
@@ -169,8 +273,24 @@ export default function AlertDetailPage({ params }: { params: { id: string } }) 
           </Card>
         </div>
 
+        {/* Agencies */}
+        {alert.agencies && alert.agencies.length > 0 && (
+          <Card className="p-4 mb-6">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              Agencies
+            </h3>
+            <div className="flex flex-wrap gap-1.5">
+              {alert.agencies.map((agency) => (
+                <span key={agency} className="px-2 py-0.5 bg-navy-600 text-gray-300 text-xs rounded font-medium">
+                  {agency}
+                </span>
+              ))}
+            </div>
+          </Card>
+        )}
+
         {/* Score */}
-        <Card className="p-4">
+        <Card className="p-4 mb-6">
           <div className="flex items-center justify-between">
             <span className="text-xs text-gray-400">Importance Score</span>
             <span className={`text-lg font-bold font-mono ${
@@ -182,6 +302,13 @@ export default function AlertDetailPage({ params }: { params: { id: string } }) 
             </span>
           </div>
         </Card>
+
+        {/* Footer meta */}
+        <div className="text-center pt-2 pb-8">
+          <p className="text-[11px] text-[#475569] font-mono">
+            Alert ID: {alert.id} · Created: {format(new Date(alert.created_at), "yyyy/MM/dd HH:mm")}
+          </p>
+        </div>
       </div>
     </div>
   );

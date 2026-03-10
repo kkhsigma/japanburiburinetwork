@@ -11,6 +11,7 @@ import searchRouter from './routes/search.js';
 import updatesRouter from './routes/updates.js';
 import settingsRouter from './routes/settings.js';
 import adminRouter from './routes/admin.js';
+import askJbnRouter from './routes/askJbn.js';
 import { startScheduler } from './jobs/fetchScheduler.js';
 
 const app = express();
@@ -37,6 +38,7 @@ app.use('/api/search', searchRouter);
 app.use('/api/updates', updatesRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/ask-jbn', askJbnRouter);
 
 // Error handling
 app.use(errorHandler);

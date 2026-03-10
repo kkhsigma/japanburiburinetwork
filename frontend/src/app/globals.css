@@ -199,6 +199,11 @@ code, pre, .font-mono {
     line-height: 1.2;
   }
 
+  /* Risk dot pulse animation for HIGH / ILLEGAL */
+  .animate-pulse-risk {
+    animation: pulse-risk 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
   /* Hide scrollbar but keep scrolling */
   .scrollbar-none {
     -ms-overflow-style: none;
@@ -206,6 +211,17 @@ code, pre, .font-mono {
   }
   .scrollbar-none::-webkit-scrollbar {
     display: none;
+  }
+}
+
+@keyframes pulse-risk {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.5);
   }
 }
 

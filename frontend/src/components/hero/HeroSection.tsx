@@ -38,8 +38,15 @@ export function HeroSection({ transitionState, onCTAClick }: HeroSectionProps) {
 
   return (
     <section className="relative z-10 flex min-h-screen items-center justify-center px-6">
+      {/* Depth spotlight — soft radial glow behind hero text */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: "radial-gradient(ellipse 50% 40% at 50% 48%, rgba(6,9,15,0.85) 0%, rgba(6,9,15,0.4) 50%, transparent 80%)",
+        }}
+      />
       <motion.div
-        className="flex max-w-2xl flex-col items-center text-center"
+        className="relative flex max-w-2xl flex-col items-center text-center"
         variants={stagger}
         initial="hidden"
         animate={isTransitioning ? undefined : "visible"}
@@ -55,7 +62,10 @@ export function HeroSection({ transitionState, onCTAClick }: HeroSectionProps) {
         >
           <p
             className="mb-10 font-mono text-[11px] tracking-[0.2em] uppercase"
-            style={{ color: "rgba(26, 154, 138, 0.5)" }}
+            style={{
+              color: "rgba(26, 154, 138, 0.6)",
+              textShadow: "0 0 20px rgba(26,154,138,0.2), 0 1px 3px rgba(0,0,0,0.5)",
+            }}
           >
             システム稼働中 &nbsp;// &nbsp;{sourcesMonitored} ソース監視中
             &nbsp;// &nbsp;最終スキャン: 2分前
@@ -77,7 +87,10 @@ export function HeroSection({ transitionState, onCTAClick }: HeroSectionProps) {
         >
           <h1
             className="text-[clamp(4rem,10vw,7rem)] font-bold leading-none tracking-tight"
-            style={{ color: "#e8ecf1" }}
+            style={{
+              color: "#e8ecf1",
+              textShadow: "0 0 60px rgba(26,154,138,0.15), 0 2px 4px rgba(0,0,0,0.5), 0 8px 30px rgba(0,0,0,0.3)",
+            }}
           >
             JBN
           </h1>
@@ -97,7 +110,10 @@ export function HeroSection({ transitionState, onCTAClick }: HeroSectionProps) {
         >
           <p
             className="mt-3 text-lg font-light tracking-wide"
-            style={{ color: "rgba(232, 236, 241, 0.55)" }}
+            style={{
+              color: "rgba(232, 236, 241, 0.6)",
+              textShadow: "0 1px 3px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.3)",
+            }}
           >
             Japan Buriburi Network
           </p>
@@ -114,7 +130,10 @@ export function HeroSection({ transitionState, onCTAClick }: HeroSectionProps) {
         >
           <p
             className="mt-6 max-w-md text-base leading-relaxed"
-            style={{ color: "rgba(232, 236, 241, 0.4)" }}
+            style={{
+              color: "rgba(232, 236, 241, 0.5)",
+              textShadow: "0 1px 3px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.25)",
+            }}
           >
             日本のカンナビノイド市場における規制インテリジェンス
           </p>
@@ -190,19 +209,22 @@ export function HeroSection({ transitionState, onCTAClick }: HeroSectionProps) {
               e.currentTarget.style.transform = "translateY(0)";
             }}
           >
-            アラートを見る
+            モニターを開く
           </button>
         </motion.div>
 
-        {/* Scroll indicator */}
-        <motion.div
+        {/* Scroll indicator — clickable */}
+        <motion.button
           variants={fadeUp}
-          className="mt-16 flex flex-col items-center gap-2"
+          className="mt-16 flex flex-col items-center gap-2 cursor-pointer bg-transparent border-none outline-none"
           animate={
             isTransitioning
               ? { opacity: 0, transition: { duration: 0.2 } }
               : undefined
           }
+          onClick={() => {
+            document.getElementById("radar-section")?.scrollIntoView({ behavior: "smooth" });
+          }}
         >
           <p
             className="text-[10px] font-mono uppercase tracking-[0.15em]"
@@ -227,7 +249,7 @@ export function HeroSection({ transitionState, onCTAClick }: HeroSectionProps) {
               style={{ color: "rgba(232, 236, 241, 0.15)" }}
             />
           </motion.div>
-        </motion.div>
+        </motion.button>
       </motion.div>
     </section>
   );

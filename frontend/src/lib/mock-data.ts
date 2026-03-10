@@ -3,7 +3,7 @@ import { Alert, Compound, WatchlistEntry, WatchlistHighlight, UpdateCard } from 
 export const mockAlerts: Alert[] = [
   {
     id: "1",
-    title: "4 New Substances Designated as Shitei Yakubutsu",
+    title: "新たに4物質が指定薬物に追加",
     severity: "critical",
     category: "designated_substance",
     status: "official_confirmed",
@@ -26,7 +26,7 @@ export const mockAlerts: Alert[] = [
   },
   {
     id: "2",
-    title: "THC Residual Limit Enforcement Now Active",
+    title: "THC残留基準値の施行開始",
     severity: "critical",
     category: "threshold",
     status: "official_confirmed",
@@ -49,7 +49,7 @@ export const mockAlerts: Alert[] = [
   },
   {
     id: "3",
-    title: "CBN Regulation Under Review by MHLW Committee",
+    title: "CBN規制を厚労省委員会が審議中",
     severity: "high",
     category: "regulation",
     status: "pending",
@@ -71,7 +71,7 @@ export const mockAlerts: Alert[] = [
   },
   {
     id: "4",
-    title: "Cannabis Control Act: Use Crime Now Enforceable",
+    title: "大麻取締法改正：使用罪の施行開始",
     severity: "high",
     category: "enforcement",
     status: "official_confirmed",
@@ -94,7 +94,7 @@ export const mockAlerts: Alert[] = [
   },
   {
     id: "5",
-    title: "Public Comment Period Open: CBD Import Procedure Changes",
+    title: "パブコメ募集中：CBD輸入手続き変更案",
     severity: "medium",
     category: "regulation",
     status: "verified",
@@ -116,7 +116,7 @@ export const mockAlerts: Alert[] = [
   },
   {
     id: "6",
-    title: "Tokyo Metropolitan Government Product Survey Results",
+    title: "東京都の製品調査結果：3製品がTHC基準超過",
     severity: "medium",
     category: "enforcement",
     status: "verified",
@@ -573,13 +573,13 @@ export const mockWatchlistHighlights: WatchlistHighlight[] = [
   {
     entity_type: "compound",
     entity_name: "CBN",
-    change: "Unknown → Under Review",
+    change: "不明 → 審議中",
     changed_at: "2026-02-15T09:00:00Z",
   },
   {
     entity_type: "compound",
     entity_name: "CBD",
-    change: "THC residual limits now enforced",
+    change: "THC残留基準値が施行開始",
     changed_at: "2025-12-12T00:00:00Z",
   },
 ];
@@ -588,7 +588,7 @@ export const mockUpdateCards: UpdateCard[] = [
   {
     id: "u1",
     type: "emergency",
-    title: "4 New Designated Substances",
+    title: "新規指定薬物4種追加",
     date: "2026-03-04",
     impact: ["THCP", "HHCP", "HHCH", "HHC-O"],
     alert_id: "1",
@@ -596,7 +596,7 @@ export const mockUpdateCards: UpdateCard[] = [
   {
     id: "u2",
     type: "warning",
-    title: "CBN Under Regulatory Review",
+    title: "CBN規制審議中",
     date: "2026-02-15",
     impact: ["oil", "gummy", "vape"],
     alert_id: "3",
@@ -604,7 +604,7 @@ export const mockUpdateCards: UpdateCard[] = [
   {
     id: "u3",
     type: "update",
-    title: "CBD Import Procedure Changes",
+    title: "CBD輸入手続き変更案",
     date: "2026-02-20",
     impact: ["oil", "powder", "cosmetics"],
     alert_id: "5",

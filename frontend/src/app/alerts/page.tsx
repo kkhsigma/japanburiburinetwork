@@ -3,16 +3,18 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { AlertTriangle } from "lucide-react";
 import { useAlerts } from "@/hooks/useAlerts";
 import { useAlertsStore } from "@/stores/alertsStore";
 import { mockAlerts } from "@/lib/mock-data";
 import { AlertFilterBar } from "@/components/alerts/AlertFilterBar";
 import { AlertCard } from "@/components/alerts/AlertCard";
+import { AlertCardSkeleton } from "@/components/ui/Skeleton";
 import { Pagination } from "@/components/ui/Pagination";
 
 export default function AlertsPage() {
   const { filters, setFilters, resetFilters } = useAlertsStore();
-  const { data, isLoading } = useAlerts(filters);
+  const { data, isLoading, isError, refetch } = useAlerts(filters);
 
   const allAlerts = data?.data ?? mockAlerts;
 
@@ -99,10 +101,27 @@ export default function AlertsPage() {
             : ""}
         </p>
 
-        {/* Loading state */}
+        {/* Loading skeleton */}
         {isLoading && (
-          <div className="flex items-center justify-center py-20">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#3b82f6] border-t-transparent" />
+          <div className="flex flex-col gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <AlertCardSkeleton key={i} />
+            ))}
+          </div>
+        )}
+
+        {/* Error state */}
+        {!isLoading && isError && (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <AlertTriangle size={28} className="text-[#64748b] mb-3" />
+            <p className="text-sm text-[#94a3b8] mb-1">アラートの読み込みに失敗しました</p>
+            <p className="text-xs text-[#64748b] mb-3">Could not load alerts. Showing cached data.</p>
+            <button
+              onClick={() => refetch()}
+              className="rounded-md px-4 py-2 text-xs text-[#1a9a8a] hover:bg-[#1e293b] transition-colors"
+            >
+              再読み込み / Retry
+            </button>
           </div>
         )}
 

@@ -1,18 +1,21 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Search, X } from "lucide-react";
 import { mockCompounds } from "@/lib/mock-data";
-import type { RiskLevel, LegalStatus } from "@/types";
+import { useCompounds } from "@/hooks/useCompounds";
+import { useToggleTracking } from "@/hooks/useWatchlistSync";
+import type { RiskLevel, LegalStatus, Compound } from "@/types";
 import { useWatchlistStore } from "@/stores/watchlistStore";
 
-const riskConfig: Record<RiskLevel, { label: string; color: string; bg: string; border: string; glow: string }> = {
-  illegal:  { label: "違法",     color: "text-red-600",     bg: "bg-red-500/10",     border: "border-red-400/30",     glow: "shadow-red-500/5" },
-  high:     { label: "高リスク", color: "text-orange-600",  bg: "bg-orange-500/10",  border: "border-orange-400/30",  glow: "shadow-orange-500/5" },
-  medium:   { label: "要注意",   color: "text-amber-600",   bg: "bg-amber-500/10",   border: "border-amber-400/30",   glow: "shadow-amber-500/5" },
-  low:      { label: "低リスク", color: "text-sky-600",     bg: "bg-sky-500/10",     border: "border-sky-400/30",     glow: "shadow-sky-500/5" },
-  safe:     { label: "合法",     color: "text-emerald-600", bg: "bg-emerald-500/10", border: "border-emerald-400/30", glow: "shadow-emerald-500/5" },
+const riskConfig: Record<RiskLevel, { label: string; color: string; bg: string; border: string; glow: string; hex: string; gradient: string }> = {
+  illegal:  { label: "違法",     color: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/40",     glow: "shadow-red-500/20",     hex: "#ef4444", gradient: "radial-gradient(ellipse at 30% 20%, rgba(239,68,68,0.25) 0%, rgba(239,68,68,0.05) 50%, transparent 70%)" },
+  high:     { label: "高リスク", color: "text-orange-400",  bg: "bg-orange-500/10",  border: "border-orange-500/40",  glow: "shadow-orange-500/20",  hex: "#f97316", gradient: "radial-gradient(ellipse at 30% 20%, rgba(249,115,22,0.22) 0%, rgba(249,115,22,0.05) 50%, transparent 70%)" },
+  medium:   { label: "要注意",   color: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/40",   glow: "shadow-amber-500/20",   hex: "#d4a72d", gradient: "radial-gradient(ellipse at 30% 20%, rgba(212,167,45,0.22) 0%, rgba(212,167,45,0.05) 50%, transparent 70%)" },
+  low:      { label: "低リスク", color: "text-sky-400",     bg: "bg-sky-500/10",     border: "border-sky-500/40",     glow: "shadow-sky-500/20",     hex: "#38bdf8", gradient: "radial-gradient(ellipse at 30% 20%, rgba(56,189,248,0.20) 0%, rgba(56,189,248,0.04) 50%, transparent 70%)" },
+  safe:     { label: "合法",     color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/40", glow: "shadow-emerald-500/20", hex: "#22c55e", gradient: "radial-gradient(ellipse at 30% 20%, rgba(34,197,94,0.22) 0%, rgba(34,197,94,0.05) 50%, transparent 70%)" },
 };
 
 const statusLabels: Record<LegalStatus, string> = {
@@ -21,9 +24,26 @@ const statusLabels: Record<LegalStatus, string> = {
   unknown: "未確認", recalled: "リコール",
 };
 
-function formatDate(dateStr: string) {
-  const d = new Date(dateStr);
-  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+/* ── Inline mini track button (light‑theme compatible) ── */
+function MiniTrackBtn({ compound }: { compound: { id: string; name: string } }) {
+  const { isTracked, toggle, isLoading } = useToggleTracking(compound);
+  return (
+    <button
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); e.preventDefault(); toggle(); }}
+      disabled={isLoading}
+      className={`px-1.5 py-0.5 rounded text-[8px] font-bold font-mono border transition-all duration-150 ${
+        isLoading ? "animate-pulse" : ""
+      } ${
+        isTracked
+          ? "bg-teal-500/15 text-teal-400 border-teal-500/30 hover:bg-teal-500/25"
+          : "bg-white/[0.04] text-[#5a6478] border-white/[0.08] hover:text-[#8b95a8] hover:border-white/[0.15]"
+      }`}
+    >
+      {isTracked ? "✓ 追跡中" : "+ 追跡"}
+    </button>
+  );
 }
 
 type FilterMode = "none" | "risk" | "family";
@@ -44,8 +64,6 @@ const CARD_H = 108;
 const HEADER_HEIGHT = 130; // accounts for external navbar + subtitle + filter bar
 
 const riskLevels: RiskLevel[] = ["illegal", "high", "medium", "low", "safe"];
-const families = Array.from(new Set(mockCompounds.map((c) => c.chemical_family ?? "Other")));
-
 const navItems = [
   { label: "モニター", href: "/universe", active: true },
   { label: "アラート", href: "/alerts" },
@@ -56,7 +74,9 @@ const navItems = [
 ];
 
 export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolean }) {
+  const router = useRouter();
   const watchlistEntries = useWatchlistStore((s) => s.entries);
+  const { data: compoundsResult } = useCompounds();
   const [filterMode, setFilterMode] = useState<FilterMode>("none");
   const [filterValue, setFilterValue] = useState<FilterValue | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -67,19 +87,41 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
   const filterRef = useRef<{ mode: FilterMode; value: FilterValue | null }>({ mode: "none", value: null });
   const [mounted, setMounted] = useState(false);
 
+  /* Use real API compounds when available, fallback to mock */
+  const compounds: Compound[] = useMemo(() => {
+    const apiData = compoundsResult?.data;
+    if (apiData && Array.isArray(apiData) && apiData.length > 0) {
+      return apiData.map((c) => ({
+        ...c,
+        risk_level: (c.risk_level?.toLowerCase() || "medium") as RiskLevel,
+        legal_status_japan: (c.legal_status_japan?.toLowerCase() || "unknown") as LegalStatus,
+      }));
+    }
+    return mockCompounds;
+  }, [compoundsResult]);
+
+  /* Derived filter lists from current compounds */
+  const currentFamilies = useMemo(
+    () => Array.from(new Set(compounds.map((c) => c.chemical_family ?? "Other"))),
+    [compounds],
+  );
+
   // Drag state
   const dragRef = useRef<{
     cardId: string | null;
+    startX: number;
+    startY: number;
+    totalDist: number;
     prevX: number;
     prevY: number;
     velX: number;
     velY: number;
-  }>({ cardId: null, prevX: 0, prevY: 0, velX: 0, velY: 0 });
+  }>({ cardId: null, startX: 0, startY: 0, totalDist: 0, prevX: 0, prevY: 0, velX: 0, velY: 0 });
 
   filterRef.current = { mode: filterMode, value: filterValue };
   const isFiltered = filterMode !== "none" && filterValue !== null;
 
-  const compoundMatches = useCallback((compound: typeof mockCompounds[0], mode: FilterMode, value: FilterValue | null) => {
+  const compoundMatches = useCallback((compound: Compound, mode: FilterMode, value: FilterValue | null) => {
     if (mode === "none" || value === null) return true;
     if (mode === "risk") return compound.risk_level === value;
     if (mode === "family") return (compound.chemical_family ?? "Other") === value;
@@ -98,7 +140,7 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
   }, []);
 
   const initCards = useCallback((w: number, h: number) => {
-    const cards: FloatingCard[] = mockCompounds.map((compound) => {
+    const cards: FloatingCard[] = compounds.map((compound) => {
       const padX = CARD_W / 2 + 10;
       const padY = CARD_H / 2 + 10;
       const minY = HEADER_HEIGHT + padY;
@@ -113,7 +155,7 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
       };
     });
     cardsRef.current = cards;
-  }, []);
+  }, [compounds]);
 
   // Drag handlers
   const handleGrab = useCallback((id: string, clientX: number, clientY: number) => {
@@ -122,6 +164,9 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
     const rect = container.getBoundingClientRect();
     dragRef.current = {
       cardId: id,
+      startX: clientX,
+      startY: clientY,
+      totalDist: 0,
       prevX: clientX - rect.left,
       prevY: clientY - rect.top,
       velX: 0,
@@ -140,6 +185,8 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
     const x = clientX - rect.left;
     const y = clientY - rect.top;
 
+    // Accumulate total distance for click detection
+    drag.totalDist += Math.abs(x - drag.prevX) + Math.abs(y - drag.prevY);
     // Track velocity as smoothed delta
     drag.velX = drag.velX * 0.3 + (x - drag.prevX) * 0.7;
     drag.velY = drag.velY * 0.3 + (y - drag.prevY) * 0.7;
@@ -159,7 +206,9 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
   const handleRelease = useCallback(() => {
     const drag = dragRef.current;
     if (!drag.cardId) return;
-    const card = cardsRef.current.find((c) => c.id === drag.cardId);
+    const clickedId = drag.cardId;
+    const wasDrag = drag.totalDist > 8; // px — threshold to distinguish click vs drag
+    const card = cardsRef.current.find((c) => c.id === clickedId);
     if (card) {
       // Fling with full cursor velocity
       card.vx = drag.velX * 1.5;
@@ -167,11 +216,16 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
       card.mass = 1;
     }
     drag.cardId = null;
-  }, []);
+
+    // Navigate to compound detail if it was a click (not a drag)
+    if (!wasDrag) {
+      router.push(`/explore/compounds/${clickedId}`);
+    }
+  }, [router]);
 
   const getGridPositions = useCallback((mode: FilterMode, value: FilterValue) => {
-    const matched = mockCompounds.filter((c) => compoundMatches(c, mode, value));
-    const unmatched = mockCompounds.filter((c) => !compoundMatches(c, mode, value));
+    const matched = compounds.filter((c) => compoundMatches(c, mode, value));
+    const unmatched = compounds.filter((c) => !compoundMatches(c, mode, value));
     const cw = sizeRef.current.w || 900;
     const cols = Math.max(1, Math.floor((cw - 40) / (CARD_W + 12)));
     const gridW = cols * (CARD_W + 12) - 12;
@@ -189,7 +243,7 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
       pos[compound.id] = { x: startX + (i % cols) * (CARD_W + 8), y: unmStartY + Math.floor(i / cols) * (CARD_H + 10) };
     });
     return pos;
-  }, [compoundMatches]);
+  }, [compounds, compoundMatches]);
 
   const handleFilter = (mode: FilterMode, value: FilterValue) => {
     if (filterMode === mode && filterValue === value) {
@@ -206,7 +260,7 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
           card.y = gridPos[card.id].y;
           card.vx = 0;
           card.vy = 0;
-          const compound = mockCompounds.find((c) => c.id === card.id)!;
+          const compound = compounds.find((c) => c.id === card.id)!;
           const isMatch = compoundMatches(compound, mode, value);
           updateCardDOM(card, isMatch ? 1 : 0.25, isMatch ? 1 : 0.88);
         }
@@ -352,7 +406,7 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
       window.removeEventListener("touchend", onTouchEnd);
       cancelAnimationFrame(animRef.current);
     };
-  }, [initCards, updateCardDOM, handleDrag, handleRelease]);
+  }, [initCards, updateCardDOM, handleDrag, handleRelease, compounds]);
 
   return (
     <div
@@ -418,7 +472,7 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
               <div className="flex items-center gap-4 pb-0.5">
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span className="text-[11px] font-mono text-gray-400">監視中 {mockCompounds.length}物質</span>
+                  <span className="text-[11px] font-mono text-gray-400">監視中 {compounds.length}物質</span>
                 </div>
                 <span className="text-[11px] font-mono text-gray-300">|</span>
                 <span className="text-[11px] font-mono text-gray-400">最終更新 12分前</span>
@@ -432,7 +486,7 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
               {riskLevels.map((risk) => {
                 const cfg = riskConfig[risk];
                 const isActive = filterMode === "risk" && filterValue === risk;
-                const count = mockCompounds.filter((c) => c.risk_level === risk).length;
+                const count = compounds.filter((c) => c.risk_level === risk).length;
                 return (
                   <button key={risk} onClick={() => handleFilter("risk", risk)}
                     className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-semibold border transition-all duration-200 cursor-pointer flex-shrink-0 ${isActive ? `${cfg.bg} ${cfg.color} ${cfg.border}` : "bg-white/60 text-gray-500 border-black/[0.06] hover:border-black/[0.12] hover:text-gray-700"}`}
@@ -440,9 +494,9 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
                 );
               })}
               <span className="text-gray-200 mx-0.5 flex-shrink-0">·</span>
-              {families.map((fam) => {
+              {currentFamilies.map((fam) => {
                 const isActive = filterMode === "family" && filterValue === fam;
-                const count = mockCompounds.filter((c) => (c.chemical_family ?? "Other") === fam).length;
+                const count = compounds.filter((c) => (c.chemical_family ?? "Other") === fam).length;
                 return (
                   <button key={fam} onClick={() => handleFilter("family", fam)}
                     className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium border transition-all duration-200 cursor-pointer flex-shrink-0 ${isActive ? "bg-teal-500/10 text-teal-600 border-teal-500/30" : "bg-white/60 text-gray-500 border-black/[0.06] hover:border-black/[0.12] hover:text-gray-700"}`}
@@ -470,7 +524,7 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
               <div className="flex items-center gap-4 pb-0.5">
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span className="text-[11px] font-mono text-gray-400">監視中 {mockCompounds.length}物質</span>
+                  <span className="text-[11px] font-mono text-gray-400">監視中 {compounds.length}物質</span>
                 </div>
                 <span className="text-[11px] font-mono text-gray-300">|</span>
                 <span className="text-[11px] font-mono text-gray-400">最終更新 12分前</span>
@@ -482,7 +536,7 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
               {riskLevels.map((risk) => {
                 const cfg = riskConfig[risk];
                 const isActive = filterMode === "risk" && filterValue === risk;
-                const count = mockCompounds.filter((c) => c.risk_level === risk).length;
+                const count = compounds.filter((c) => c.risk_level === risk).length;
                 return (
                   <button key={risk} onClick={() => handleFilter("risk", risk)}
                     className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-semibold border transition-all duration-200 cursor-pointer flex-shrink-0 ${isActive ? `${cfg.bg} ${cfg.color} ${cfg.border}` : "bg-white/60 text-gray-500 border-black/[0.06] hover:border-black/[0.12] hover:text-gray-700"}`}
@@ -490,9 +544,9 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
                 );
               })}
               <span className="text-gray-200 mx-0.5 flex-shrink-0">·</span>
-              {families.map((fam) => {
+              {currentFamilies.map((fam) => {
                 const isActive = filterMode === "family" && filterValue === fam;
-                const count = mockCompounds.filter((c) => (c.chemical_family ?? "Other") === fam).length;
+                const count = compounds.filter((c) => (c.chemical_family ?? "Other") === fam).length;
                 return (
                   <button key={fam} onClick={() => handleFilter("family", fam)}
                     className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium border transition-all duration-200 cursor-pointer flex-shrink-0 ${isActive ? "bg-teal-500/10 text-teal-600 border-teal-500/30" : "bg-white/60 text-gray-500 border-black/[0.06] hover:border-black/[0.12] hover:text-gray-700"}`}
@@ -509,15 +563,15 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
         </div>
       )}
 
-      {/* Cards — rendered once, positioned via direct DOM, grabbable */}
-      {mounted && mockCompounds.map((compound) => {
-        const risk = riskConfig[compound.risk_level];
+      {/* Cards — rendered once, positioned via direct DOM, grabbable + clickable */}
+      {mounted && compounds.map((compound) => {
+        const risk = riskConfig[compound.risk_level] || riskConfig.medium;
         return (
           <div
             key={compound.id}
             ref={(el) => setCardRef(compound.id, el)}
             className="absolute z-10 will-change-transform select-none"
-            style={{ width: CARD_W, opacity: 0, cursor: dragRef.current.cardId === compound.id ? "grabbing" : "grab" }}
+            style={{ width: CARD_W, opacity: 0, cursor: "grab" }}
             onMouseDown={(e) => {
               e.preventDefault();
               handleGrab(compound.id, e.clientX, e.clientY);
@@ -529,29 +583,52 @@ export function FloatingSubstances({ hideHeader = false }: { hideHeader?: boolea
             }}
           >
             <div
-              className={`block rounded-lg border p-3 transition-colors duration-200 bg-white/80 backdrop-blur-sm hover:bg-white hover:shadow-md ${risk.glow} ${risk.border}`}
+              className="relative block rounded-xl overflow-hidden transition-all duration-200 backdrop-blur-md hover:scale-[1.03]"
+              style={{
+                background: `${risk.gradient}, radial-gradient(ellipse at 70% 80%, rgba(6,9,15,0.95) 0%, #0a0f1a 100%)`,
+                border: `1.5px solid ${risk.hex}35`,
+                boxShadow: `0 0 15px ${risk.hex}20, inset 0 1px 0 rgba(255,255,255,0.03)`,
+              }}
             >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[13px] font-bold font-mono text-gray-900 tracking-tight">{compound.name}</span>
-                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${risk.bg} ${risk.color} tracking-wide`}>{risk.label}</span>
-                {watchlistEntries.some(e => e.entity_id === compound.id) && (
-                  <span className="w-2 h-2 rounded-full bg-[#1a9a8a] shadow-[0_0_4px_rgba(26,154,138,0.6)]" title="追跡中" />
-                )}
-              </div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1 h-1 rounded-full bg-current opacity-50" style={{ color: "inherit" }} />
-                  <span className="text-[10px] text-gray-500 font-medium">{statusLabels[compound.legal_status_japan]}</span>
+              {/* Scan-line overlay */}
+              <div
+                className="absolute inset-0 opacity-[0.03] pointer-events-none"
+                style={{ backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.4) 2px, rgba(255,255,255,0.4) 3px)" }}
+              />
+              {/* Orbital arc */}
+              <div
+                className="absolute -right-6 -top-6 w-24 h-24 rounded-full opacity-[0.08] pointer-events-none"
+                style={{ border: `1px solid ${risk.hex}` }}
+              />
+              <div className="relative z-10 p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[13px] font-bold font-mono text-[#e2e8f0] tracking-tight truncate mr-1">{compound.name}</span>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: risk.hex, boxShadow: `0 0 6px ${risk.hex}80` }}
+                    />
+                    <span className={`text-[9px] font-bold font-mono tracking-wide ${risk.color}`}>{risk.label}</span>
+                    {watchlistEntries.some(e => e.entity_id === compound.id) && (
+                      <span className="w-2 h-2 rounded-full bg-[#1a9a8a] shadow-[0_0_4px_rgba(26,154,138,0.6)]" title="追跡中" />
+                    )}
+                  </div>
                 </div>
-                {compound.chemical_family && (
-                  <span className="text-[8px] text-gray-400 font-mono truncate max-w-[70px]">{compound.chemical_family}</span>
-                )}
-              </div>
-              <div className="flex items-center justify-between pt-1.5 border-t border-black/[0.04]">
-                <span className="text-[9px] text-gray-400 font-mono tracking-wide">{formatDate(compound.legal_status_updated_at)}</span>
-                <span className={`text-[9px] font-mono tracking-wide ${compound.natural_or_synthetic === "natural" ? "text-emerald-500" : "text-violet-500"}`}>
-                  {compound.natural_or_synthetic === "natural" ? "NAT" : "SYN"}
-                </span>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1 h-1 rounded-full" style={{ backgroundColor: risk.hex, opacity: 0.5 }} />
+                    <span className="text-[10px] text-[#8b95a8] font-medium">{statusLabels[compound.legal_status_japan] || compound.legal_status_japan}</span>
+                  </div>
+                  {compound.chemical_family && (
+                    <span className="text-[8px] text-[#5a6478] font-mono truncate max-w-[70px]">{compound.chemical_family}</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between pt-1.5" style={{ borderTop: `1px solid ${risk.hex}12` }}>
+                  <MiniTrackBtn compound={{ id: compound.id, name: compound.name }} />
+                  <span className={`text-[9px] font-mono tracking-wide ${compound.natural_or_synthetic === "natural" ? "text-emerald-400" : "text-violet-400"}`}>
+                    {compound.natural_or_synthetic === "natural" ? "NAT" : "SYN"}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

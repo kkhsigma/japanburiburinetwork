@@ -298,7 +298,11 @@ async function seed() {
   for (const alert of SAMPLE_ALERTS) {
     await client.query(
       `INSERT INTO alerts (title, category, severity, status, source_tier, confidence_level, published_at, effective_at, summary_what, summary_why, summary_who, compounds, product_forms, agencies, diff_before, diff_after, diff_type, primary_source_url, importance_score)
-       VALUES ($1, $2::alert_category, $3::alert_severity, $4::alert_status, $5::source_tier, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+       VALUES ($1, $2::alert_category, $3::alert_severity, $4::alert_status, $5::source_tier, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+       ON CONFLICT (title) DO UPDATE SET
+         severity = $3::alert_severity, status = $4::alert_status,
+         summary_what = $9, summary_why = $10, summary_who = $11,
+         importance_score = $19, updated_at = NOW()`,
       [
         alert.title, alert.category, alert.severity, alert.status, alert.source_tier,
         alert.confidence_level, alert.published_at, alert.effective_at,
@@ -314,7 +318,10 @@ async function seed() {
   for (const reg of THC_REGULATIONS) {
     await client.query(
       `INSERT INTO thc_regulations (product_category, max_thc_level, measurement_method, effective_date, source_url, is_current)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (product_category) DO UPDATE SET
+         max_thc_level = $2, measurement_method = $3, effective_date = $4,
+         source_url = $5, is_current = $6`,
       [reg.product_category, reg.max_thc_level, reg.measurement_method, reg.effective_date, reg.source_url, reg.is_current]
     );
   }

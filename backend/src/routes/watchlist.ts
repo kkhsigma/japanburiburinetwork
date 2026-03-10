@@ -65,9 +65,11 @@ router.post('/', async (req, res, next) => {
     const userId = await getDefaultUserId();
     if (!userId) return res.status(400).json({ error: 'No user found' });
 
-    const { entityType, entityId, notificationEnabled = true } = req.body;
+    const entityType = req.body.entity_type || req.body.entityType;
+    const entityId = req.body.entity_id || req.body.entityId;
+    const notificationEnabled = req.body.notification_enabled ?? req.body.notificationEnabled ?? true;
     if (!entityType || !entityId) {
-      return res.status(400).json({ error: 'entityType and entityId are required' });
+      return res.status(400).json({ error: 'entity_type and entity_id are required' });
     }
 
     const result = await pool.query(
