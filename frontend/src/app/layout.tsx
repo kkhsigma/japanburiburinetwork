@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { QueryProvider } from "@/lib/query-provider";
+import { AskJbnWrapper } from "@/components/chat/AskJbnWrapper";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -34,6 +35,7 @@ export default function RootLayout({
         <QueryProvider>
           {children}
         </QueryProvider>
+        <AskJbnWrapper />
         <div className="fixed top-4 left-4 z-50 pointer-events-none">
           <span className="text-[10px] font-mono text-white/30">
             v{process.env.NEXT_PUBLIC_APP_VERSION}
