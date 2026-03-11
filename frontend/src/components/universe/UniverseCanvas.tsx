@@ -1199,7 +1199,7 @@ function DebrisField({
 
 // ─── Floating Book (Community / Blog) ────────────────────
 
-const BOOK_POSITION: [number, number, number] = [-7, -1.8, -5];
+const BOOK_POSITION: [number, number, number] = [-6, -0.5, -4];
 
 function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -1207,9 +1207,9 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
   const [hovered, setHovered] = useState(false);
   const openAmount = useRef(0);
 
-  const bookW = 1.6;
-  const bookH = 2.0;
-  const bookD = 0.35;
+  const bookW = 2.0;
+  const bookH = 2.5;
+  const bookD = 0.4;
   const coverThick = 0.04;
 
   // Front cover pivots at spine (left edge)
@@ -1239,13 +1239,26 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
 
   return (
     <group ref={groupRef}>
-      {/* Soft warm glow */}
+      {/* Soft warm glow — larger and brighter */}
       <mesh>
-        <sphereGeometry args={[2.0, 24, 24]} />
+        <sphereGeometry args={[3.0, 24, 24]} />
         <meshBasicMaterial
-          color={new THREE.Color(1.0, 0.7, 0.2)}
+          color={new THREE.Color(1.5, 1.0, 0.3)}
           transparent
-          opacity={0.03}
+          opacity={0.06}
+          side={THREE.BackSide}
+          toneMapped={false}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </mesh>
+      {/* Inner bright glow */}
+      <mesh>
+        <sphereGeometry args={[1.8, 24, 24]} />
+        <meshBasicMaterial
+          color={new THREE.Color(2.0, 1.5, 0.5)}
+          transparent
+          opacity={0.04}
           side={THREE.BackSide}
           toneMapped={false}
           depthWrite={false}
@@ -1273,49 +1286,49 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
         {/* Back cover */}
         <mesh position={[0, 0, -bookD / 2]}>
           <boxGeometry args={[bookW, bookH, coverThick]} />
-          <meshStandardMaterial color="#1a1520" roughness={0.5} metalness={0.15} />
+          <meshStandardMaterial color="#2a1830" roughness={0.4} metalness={0.2} emissive="#1a0a20" emissiveIntensity={0.3} />
         </mesh>
 
         {/* Spine */}
         <mesh position={[-bookW / 2, 0, 0]}>
           <boxGeometry args={[coverThick, bookH, bookD]} />
-          <meshStandardMaterial color="#2a1a30" roughness={0.4} metalness={0.2} />
+          <meshStandardMaterial color="#3a2040" roughness={0.35} metalness={0.25} emissive="#2a1030" emissiveIntensity={0.3} />
         </mesh>
 
-        {/* Pages block */}
+        {/* Pages block — slightly glowing warm */}
         <mesh position={[0, 0, 0]}>
           <boxGeometry args={[bookW * 0.92, bookH * 0.94, bookD * 0.75]} />
-          <meshStandardMaterial color="#e8dcc8" roughness={0.9} metalness={0} />
+          <meshStandardMaterial color="#f0e4d0" roughness={0.8} metalness={0} emissive="#d4a72d" emissiveIntensity={0.08} />
         </mesh>
 
         {/* Front cover — pivots open */}
         <group ref={coverRef} position={[-bookW / 2, 0, bookD / 2]}>
           <mesh geometry={frontCoverGeo}>
             <meshStandardMaterial
-              color="#2a1a35"
-              roughness={0.45}
-              metalness={0.2}
-              emissive="#1a0a25"
-              emissiveIntensity={0.15}
+              color="#3a1a40"
+              roughness={0.4}
+              metalness={0.25}
+              emissive="#2a1035"
+              emissiveIntensity={0.35}
             />
           </mesh>
-          {/* Gold title embossing on front cover */}
+          {/* Gold title embossing on front cover — brighter */}
           <mesh position={[bookW / 2, bookH * 0.15, coverThick / 2 + 0.005]}>
             <planeGeometry args={[bookW * 0.5, bookH * 0.06]} />
             <meshBasicMaterial
-              color={new THREE.Color(2.0, 1.5, 0.4)}
+              color={new THREE.Color(3.0, 2.2, 0.6)}
               toneMapped={false}
               transparent
-              opacity={0.6}
+              opacity={0.8}
             />
           </mesh>
           <mesh position={[bookW / 2, -bookH * 0.05, coverThick / 2 + 0.005]}>
             <planeGeometry args={[bookW * 0.35, bookH * 0.04]} />
             <meshBasicMaterial
-              color={new THREE.Color(1.5, 1.1, 0.3)}
+              color={new THREE.Color(2.5, 1.8, 0.5)}
               toneMapped={false}
               transparent
-              opacity={0.4}
+              opacity={0.6}
             />
           </mesh>
         </group>
@@ -1370,9 +1383,9 @@ function BookParticles() {
     const pos = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
       const a = (i / count) * Math.PI * 2;
-      const r = 1.2 + Math.random() * 0.6;
+      const r = 1.5 + Math.random() * 0.8;
       pos[i * 3] = Math.cos(a) * r;
-      pos[i * 3 + 1] = (Math.random() - 0.5) * 1.0;
+      pos[i * 3 + 1] = (Math.random() - 0.5) * 1.4;
       pos[i * 3 + 2] = Math.sin(a) * r;
     }
     g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
@@ -1388,10 +1401,10 @@ function BookParticles() {
   return (
     <points ref={pointsRef} geometry={geo}>
       <pointsMaterial
-        size={0.05}
-        color={new THREE.Color(2.0, 1.5, 0.4)}
+        size={0.08}
+        color={new THREE.Color(3.0, 2.2, 0.6)}
         transparent
-        opacity={0.4}
+        opacity={0.55}
         sizeAttenuation
         toneMapped={false}
       />
@@ -2290,6 +2303,18 @@ function ResponsiveFov({ baseFov = 45 }: { baseFov?: number }) {
   return null;
 }
 
+/** Reset camera to default position on mount — fixes stale camera after browser back */
+function CameraReset() {
+  const { camera } = useThree();
+  useEffect(() => {
+    camera.position.set(0, 12, 22);
+    camera.lookAt(0, 0, 0);
+    (camera as THREE.PerspectiveCamera).fov = 45;
+    (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+  }, [camera]);
+  return null;
+}
+
 function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"; skipIntro?: boolean }) {
   const [travelTarget, setTravelTarget] = useState<string | null>(null);
   const isLight = theme === "light";
@@ -2312,6 +2337,8 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
 
   return (
     <IntroContext.Provider value={{ skipIntro }}>
+      {/* Reset camera on mount — fixes stale position after browser back */}
+      <CameraReset />
       {/* Responsive FOV — widen on narrow screens so planets fit */}
       <ResponsiveFov baseFov={45} />
 
