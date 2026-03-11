@@ -296,6 +296,15 @@ const riskLevels: RiskLevel[] = ["illegal", "high", "medium", "low", "safe"];
 type FilterMode = "none" | "risk" | "family";
 type FilterValue = RiskLevel | string;
 
+interface TrailPoint { x: number; y: number }
+
+interface Spark {
+  x: number; y: number;
+  vx: number; vy: number;
+  life: number; // 0→1, dies at 1
+  hex: string;
+}
+
 interface FloatingCard {
   id: string;
   x: number;
@@ -304,8 +313,12 @@ interface FloatingCard {
   vy: number;
   squishX: number; // 1 = normal, >1 = stretched horizontally
   squishY: number; // 1 = normal, <1 = compressed vertically
+  trail: TrailPoint[]; // last N positions for comet tail
   el: HTMLDivElement | null;
 }
+
+const TRAIL_LENGTH = 8;
+const MAX_SPARKS = 60;
 
 // Sized for molecular structure display
 const CARD_W = 135;
@@ -331,6 +344,9 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
   const lastScrollY = useRef(0);
   const transitionRef = useRef<TransitionState>("idle");
   const lineFrameCount = useRef(0);
+  const sparksRef = useRef<Spark[]>([]);
+  const hoveredIdRef = useRef<string | null>(null);
+  const globalTime = useRef(0); // monotonic time for constellation dot animation
 
   // Pre-built lookup for O(1) compound data access in physics loop
   const compLookup = useRef(new Map(
@@ -345,6 +361,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
 
   transitionRef.current = transitionState;
   filterRef.current = { mode: filterMode, value: filterValue };
+  hoveredIdRef.current = hoveredId;
 
   const updateCardDOM = useCallback((card: FloatingCard, opacity: number, scale: number) => {
     if (!card.el) return;
@@ -382,6 +399,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         vx: (Math.random() - 0.5) * 0.3,
         vy: (Math.random() - 0.5) * 0.3,
         squishX: 1, squishY: 1,
+        trail: [],
         el: null,
       };
     });
@@ -593,29 +611,169 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         }
       }
 
-      // Card repulsion
+      // ── Feature 1: Record trail positions for comet tails ──
+      for (const card of cards) {
+        const speed = Math.sqrt(card.vx * card.vx + card.vy * card.vy);
+        // Only record trail when moving noticeably
+        if (speed > 0.05) {
+          card.trail.push({ x: card.x, y: card.y });
+          if (card.trail.length > TRAIL_LENGTH) card.trail.shift();
+        } else if (card.trail.length > 0) {
+          // Fade out trail when nearly still
+          card.trail.shift();
+        }
+      }
+
+      // ── Feature 2: Elastic collision with sparks ──
+      const sparks = sparksRef.current;
       for (let i = 0; i < cards.length; i++) {
         for (let j = i + 1; j < cards.length; j++) {
           const a = cards[i], b = cards[j];
           const dx = a.x - b.x, dy = a.y - b.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < CARD_W * 0.9 && dist > 0) {
-            const f = (CARD_W * 0.9 - dist) * 0.015;
+          const minDist = CARD_W * 0.85;
+          if (dist < minDist && dist > 0) {
             const nx = dx / dist, ny = dy / dist;
-            a.vx += nx * f; a.vy += ny * f;
-            b.vx -= nx * f; b.vy -= ny * f;
+            const overlap = minDist - dist;
+
+            // Separate
+            a.x += nx * overlap * 0.5;
+            a.y += ny * overlap * 0.5;
+            b.x -= nx * overlap * 0.5;
+            b.y -= ny * overlap * 0.5;
+
+            // Elastic velocity exchange along collision normal
+            const dvx = a.vx - b.vx;
+            const dvy = a.vy - b.vy;
+            const dotN = dvx * nx + dvy * ny;
+            if (dotN > 0) { // only if approaching
+              a.vx -= dotN * nx * 0.9;
+              a.vy -= dotN * ny * 0.9;
+              b.vx += dotN * nx * 0.9;
+              b.vy += dotN * ny * 0.9;
+
+              // Jelly squish on both
+              const impactForce = Math.abs(dotN);
+              const sq = Math.min(0.4, impactForce * 1.5);
+              a.squishX = 1 + sq; a.squishY = 1 - sq * 0.6;
+              b.squishX = 1 + sq; b.squishY = 1 - sq * 0.6;
+
+              // Spawn sparks at collision midpoint
+              if (impactForce > 0.15 && sparks.length < MAX_SPARKS) {
+                const midX = (a.x + b.x) / 2;
+                const midY = (a.y + b.y) / 2;
+                const hexA = compLookup.get(a.id)?.hex || "#fff";
+                const hexB = compLookup.get(b.id)?.hex || "#fff";
+                const sparkCount = Math.min(6, Math.floor(impactForce * 8));
+                for (let s = 0; s < sparkCount; s++) {
+                  const angle = Math.random() * Math.PI * 2;
+                  const speed = 0.5 + Math.random() * impactForce * 2;
+                  sparks.push({
+                    x: midX, y: midY,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    life: 0,
+                    hex: s % 2 === 0 ? hexA : hexB,
+                  });
+                }
+              }
+            }
           }
         }
       }
 
-      // Draw connection lines between same-family compounds (throttled — every 3rd frame)
-      if (lineFrameCount.current++ % 3 === 0) {
+      // Update sparks
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const s = sparks[i];
+        s.x += s.vx;
+        s.y += s.vy;
+        s.vx *= 0.96;
+        s.vy *= 0.96;
+        s.life += 0.04;
+        if (s.life >= 1) sparks.splice(i, 1);
+      }
+
+      // ── Canvas drawing: trails + sparks + constellation lines ──
+      globalTime.current += 0.02;
+      if (lineFrameCount.current++ % 2 === 0) {
         const cvs = linesCanvasRef.current;
         if (cvs) {
           const ctx = cvs.getContext("2d");
           if (ctx) {
             ctx.clearRect(0, 0, cw, ch);
+
+            // Feature 1: Draw comet trails
+            for (const card of cards) {
+              if (card.trail.length < 2) continue;
+              const data = compLookup.get(card.id);
+              if (!data) continue;
+              const trail = card.trail;
+              for (let t = 1; t < trail.length; t++) {
+                const alpha = (t / trail.length) * 0.2;
+                const width = (t / trail.length) * 1.5;
+                ctx.strokeStyle = data.hex;
+                ctx.globalAlpha = alpha;
+                ctx.lineWidth = width;
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(trail[t - 1].x, trail[t - 1].y);
+                ctx.lineTo(trail[t].x, trail[t].y);
+                ctx.stroke();
+              }
+            }
+
+            // Feature 2: Draw sparks
+            for (const s of sparks) {
+              const alpha = 1 - s.life;
+              const radius = (1 - s.life) * 2.5;
+              ctx.globalAlpha = alpha * 0.9;
+              ctx.fillStyle = s.hex;
+              ctx.beginPath();
+              ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
+              ctx.fill();
+              // Glow
+              ctx.globalAlpha = alpha * 0.3;
+              ctx.beginPath();
+              ctx.arc(s.x, s.y, radius * 2.5, 0, Math.PI * 2);
+              ctx.fill();
+            }
+
+            // Feature 3: Hover pulse resonance glow (drawn as expanding rings)
+            const hId = hoveredIdRef.current;
+            if (hId) {
+              const hovData = compLookup.get(hId);
+              const hovCard = cards.find(c => c.id === hId);
+              if (hovData && hovCard) {
+                // Pulse ring on hovered molecule
+                const pulsePhase = (globalTime.current * 3) % 1;
+                const pulseR = 30 + pulsePhase * 40;
+                ctx.globalAlpha = (1 - pulsePhase) * 0.15;
+                ctx.strokeStyle = hovData.hex;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(hovCard.x, hovCard.y, pulseR, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Resonance: glow same-family molecules
+                for (const card of cards) {
+                  if (card.id === hId) continue;
+                  const cData = compLookup.get(card.id);
+                  if (!cData || cData.family !== hovData.family) continue;
+                  const resPulse = ((globalTime.current * 2) + Math.random() * 0.01) % 1;
+                  const resR = 20 + resPulse * 25;
+                  ctx.globalAlpha = (1 - resPulse) * 0.08;
+                  ctx.strokeStyle = cData.hex;
+                  ctx.lineWidth = 1;
+                  ctx.beginPath();
+                  ctx.arc(card.x, card.y, resR, 0, Math.PI * 2);
+                  ctx.stroke();
+                }
+              }
+            }
+
+            // Feature 4: Animated constellation lines with flowing dots
             const CONNECTION_DIST = 220;
+            const t = globalTime.current;
             for (let i = 0; i < cards.length; i++) {
               const a = cards[i];
               const famA = compLookup.get(a.id);
@@ -624,22 +782,41 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
                 const b = cards[j];
                 const famB = compLookup.get(b.id);
                 if (!famB || famA.family !== famB.family) continue;
-                const dx = a.x - b.x, dy = a.y - b.y;
-                const distSq = dx * dx + dy * dy;
+                const ddx = a.x - b.x, ddy = a.y - b.y;
+                const distSq = ddx * ddx + ddy * ddy;
                 if (distSq < CONNECTION_DIST * CONNECTION_DIST && distSq > 0) {
                   const dist = Math.sqrt(distSq);
-                  const alpha = (1 - dist / CONNECTION_DIST) * 0.1;
+                  const baseAlpha = (1 - dist / CONNECTION_DIST);
+
+                  // Dashed line
                   ctx.strokeStyle = famA.hex;
-                  ctx.globalAlpha = alpha;
-                  ctx.lineWidth = 0.7;
+                  ctx.globalAlpha = baseAlpha * 0.08;
+                  ctx.lineWidth = 0.6;
+                  ctx.setLineDash([4, 6]);
+                  ctx.lineDashOffset = -t * 20; // animate the dash
                   ctx.beginPath();
                   ctx.moveTo(a.x, a.y);
                   ctx.lineTo(b.x, b.y);
                   ctx.stroke();
+                  ctx.setLineDash([]);
+
+                  // Flowing dots along the line
+                  const dotCount = 2;
+                  for (let d = 0; d < dotCount; d++) {
+                    const phase = ((t * 0.5 + d / dotCount + i * 0.1) % 1);
+                    const px = a.x + (b.x - a.x) * phase;
+                    const py = a.y + (b.y - a.y) * phase;
+                    ctx.globalAlpha = baseAlpha * 0.25 * Math.sin(phase * Math.PI);
+                    ctx.fillStyle = famA.hex;
+                    ctx.beginPath();
+                    ctx.arc(px, py, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                  }
                 }
               }
             }
             ctx.globalAlpha = 1;
+            ctx.setLineDash([]);
           }
         }
       }
