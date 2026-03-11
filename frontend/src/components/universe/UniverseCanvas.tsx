@@ -4,6 +4,7 @@ import { useRef, useMemo, useState, useEffect, createContext, useContext, Fragme
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, Stars } from "@react-three/drei";
 import * as THREE from "three";
+import { mockCompounds } from "@/lib/mock-data";
 
 // ─── Intro Animation Context ────────────────────────────
 const IntroContext = createContext({ skipIntro: false });
@@ -235,6 +236,44 @@ const WORLDS: WorldDef[] = [
 ];
 
 const ORIGIN: [number, number, number] = [0, 0, 0];
+
+// ─── Planet Stats (computed from real compound data) ─────
+
+const CANNABIS_FAMILIES = new Set(["Cannabinoid"]);
+const PSYCHEDELIC_FAMILIES = new Set(["Lysergamide", "Tryptamine", "Isoxazole", "Indole Alkaloid", "Phenethylamine"]);
+
+function getPlanetFamilies(planetId: string): Set<string> {
+  if (planetId === "cannabis") return CANNABIS_FAMILIES;
+  if (planetId === "psychedelics") return PSYCHEDELIC_FAMILIES;
+  // "others" = everything not in cannabis or psychedelics
+  return new Set(
+    mockCompounds
+      .map((c) => c.chemical_family ?? "Other")
+      .filter((f) => !CANNABIS_FAMILIES.has(f) && !PSYCHEDELIC_FAMILIES.has(f))
+  );
+}
+
+interface PlanetStats {
+  total: number;
+  banned: number;   // effective status
+  underReview: number;
+  legal: number;    // unknown/recalled
+}
+
+const planetStatsCache: Record<string, PlanetStats> = {};
+function getPlanetStats(planetId: string): PlanetStats {
+  if (planetStatsCache[planetId]) return planetStatsCache[planetId];
+  const families = getPlanetFamilies(planetId);
+  const compounds = mockCompounds.filter((c) => families.has(c.chemical_family ?? "Other"));
+  const stats: PlanetStats = {
+    total: compounds.length,
+    banned: compounds.filter((c) => c.legal_status_japan === "effective" || c.legal_status_japan === "promulgated").length,
+    underReview: compounds.filter((c) => c.legal_status_japan === "under_review" || c.legal_status_japan === "pending").length,
+    legal: compounds.filter((c) => c.legal_status_japan === "unknown" || c.legal_status_japan === "recalled").length,
+  };
+  planetStatsCache[planetId] = stats;
+  return stats;
+}
 
 // ─── Easing ─────────────────────────────────────────────
 
@@ -502,6 +541,112 @@ function PathDots({
         sizeAttenuation
       />
     </points>
+  );
+}
+
+// ─── Energy Pulse (travels along golden paths) ──────────
+
+function EnergyPulse({
+  start,
+  end,
+  color = "#ffc830",
+  interval = 4,
+  travelTime = 2.5,
+}: {
+  start: [number, number, number];
+  end: [number, number, number];
+  color?: string;
+  interval?: number;
+  travelTime?: number;
+}) {
+  const spriteRef = useRef<THREE.Sprite>(null);
+  const trailRef = useRef<THREE.Points>(null);
+  const glowMap = useMemo(() => makeGlowMap(), []);
+  const pulseColor = useMemo(() => new THREE.Color(color), [color]);
+
+  const curve = useMemo(() => {
+    const s = new THREE.Vector3(...start);
+    const e = new THREE.Vector3(...end);
+    const mid = new THREE.Vector3().lerpVectors(s, e, 0.5);
+    mid.y += Math.max(1.2, s.distanceTo(e) * 0.1);
+    return new THREE.QuadraticBezierCurve3(s, mid, e);
+  }, [start, end]);
+
+  // Trail particles behind the pulse
+  const trailCount = 8;
+  const trailGeo = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(trailCount * 3), 3));
+    return g;
+  }, []);
+
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    const cycle = t % (interval + travelTime);
+    const traveling = cycle >= interval;
+
+    if (!traveling) {
+      if (spriteRef.current) spriteRef.current.visible = false;
+      if (trailRef.current) trailRef.current.visible = false;
+      return;
+    }
+
+    const progress = (cycle - interval) / travelTime;
+    const pt = curve.getPoint(progress);
+
+    // Main glow
+    if (spriteRef.current) {
+      spriteRef.current.visible = true;
+      spriteRef.current.position.copy(pt);
+      const fadeEdge = progress < 0.1 ? progress / 0.1 : progress > 0.9 ? (1 - progress) / 0.1 : 1;
+      const pulse = 0.8 + Math.sin(t * 12) * 0.2; // subtle shimmer
+      spriteRef.current.scale.setScalar(1.2 * fadeEdge * pulse);
+      (spriteRef.current.material as THREE.SpriteMaterial).opacity = 0.4 * fadeEdge;
+    }
+
+    // Trail behind
+    if (trailRef.current) {
+      trailRef.current.visible = true;
+      const pos = trailGeo.attributes.position.array as Float32Array;
+      for (let i = 0; i < trailCount; i++) {
+        const trailProg = Math.max(0, progress - (i + 1) * 0.015);
+        const tp = curve.getPoint(trailProg);
+        pos[i * 3] = tp.x;
+        pos[i * 3 + 1] = tp.y;
+        pos[i * 3 + 2] = tp.z;
+      }
+      trailGeo.attributes.position.needsUpdate = true;
+      const fadeEdge = progress < 0.1 ? progress / 0.1 : progress > 0.9 ? (1 - progress) / 0.1 : 1;
+      (trailRef.current.material as THREE.PointsMaterial).opacity = 0.35 * fadeEdge;
+    }
+  });
+
+  return (
+    <>
+      <sprite ref={spriteRef} visible={false}>
+        <spriteMaterial
+          map={glowMap}
+          color={pulseColor}
+          transparent
+          opacity={0}
+          toneMapped={false}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </sprite>
+      <points ref={trailRef} geometry={trailGeo} visible={false}>
+        <pointsMaterial
+          size={0.08}
+          color={pulseColor}
+          transparent
+          opacity={0}
+          sizeAttenuation
+          toneMapped={false}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </points>
+    </>
   );
 }
 
@@ -814,59 +959,81 @@ function PlanetNode({
             {world.sublabel}
           </div>
 
-          {/* Hover preview card */}
-          <div
-            style={{
-              marginTop: "8px",
-              padding: "8px 12px",
-              borderRadius: "8px",
-              backgroundColor: "rgba(6,9,15,0.9)",
-              border: `1px solid ${world.glowColor}30`,
-              boxShadow: `0 4px 20px rgba(0,0,0,0.6), 0 0 15px ${world.glowColor}15`,
-              backdropFilter: "blur(8px)",
-              opacity: hovered ? 1 : 0,
-              transform: hovered ? "translateY(0) scale(1)" : "translateY(-4px) scale(0.95)",
-              transition: "all 0.3s ease",
-              pointerEvents: "none",
-              minWidth: "120px",
-            }}
-          >
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              marginBottom: "4px",
-            }}>
-              <span style={{
-                width: "6px", height: "6px", borderRadius: "50%",
-                backgroundColor: world.glowColor,
-                boxShadow: `0 0 6px ${world.glowColor}80`,
-              }} />
-              <span style={{
-                fontSize: "9px", fontFamily: "ui-monospace, monospace",
-                color: world.glowColor, letterSpacing: "0.05em",
-              }}>
-                {world.id === "cannabis" ? "12 物質" : world.id === "psychedelics" ? "8 物質" : "15 物質"}
-              </span>
-            </div>
-            <div style={{
-              display: "flex", alignItems: "center", gap: "4px",
-            }}>
-              <span style={{
-                fontSize: "8px", fontFamily: "ui-monospace, monospace",
-                color: "#ef4444", letterSpacing: "0.03em",
-              }}>
-                {world.id === "cannabis" ? "3 アラート" : world.id === "psychedelics" ? "2 アラート" : "5 アラート"}
-              </span>
-              <span style={{ fontSize: "7px", color: "rgba(255,255,255,0.15)" }}>|</span>
-              <span style={{
-                fontSize: "8px", fontFamily: "ui-monospace, monospace",
-                color: "rgba(255,255,255,0.3)",
-              }}>
-                クリックで詳細
-              </span>
-            </div>
-          </div>
+          {/* Hover preview card — real data */}
+          {(() => {
+            const stats = getPlanetStats(world.id);
+            return (
+              <div
+                style={{
+                  marginTop: "8px",
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  backgroundColor: "rgba(6,9,15,0.9)",
+                  border: `1px solid ${world.glowColor}30`,
+                  boxShadow: `0 4px 20px rgba(0,0,0,0.6), 0 0 15px ${world.glowColor}15`,
+                  backdropFilter: "blur(8px)",
+                  opacity: hovered ? 1 : 0,
+                  transform: hovered ? "translateY(0) scale(1)" : "translateY(-4px) scale(0.95)",
+                  transition: "all 0.3s ease",
+                  pointerEvents: "none",
+                  minWidth: "130px",
+                }}
+              >
+                {/* Total count */}
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "6px", marginBottom: "5px",
+                }}>
+                  <span style={{
+                    width: "6px", height: "6px", borderRadius: "50%",
+                    backgroundColor: world.glowColor,
+                    boxShadow: `0 0 6px ${world.glowColor}80`,
+                  }} />
+                  <span style={{
+                    fontSize: "9px", fontFamily: "ui-monospace, monospace",
+                    color: world.glowColor, letterSpacing: "0.05em",
+                  }}>
+                    {stats.total} 物質
+                  </span>
+                </div>
+                {/* Status breakdown dots */}
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px",
+                }}>
+                  {stats.banned > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                      <span style={{ width: "5px", height: "5px", borderRadius: "50%", backgroundColor: "#ef4444" }} />
+                      <span style={{ fontSize: "8px", fontFamily: "ui-monospace, monospace", color: "#ef4444" }}>
+                        {stats.banned}
+                      </span>
+                    </div>
+                  )}
+                  {stats.underReview > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                      <span style={{ width: "5px", height: "5px", borderRadius: "50%", backgroundColor: "#eab308" }} />
+                      <span style={{ fontSize: "8px", fontFamily: "ui-monospace, monospace", color: "#eab308" }}>
+                        {stats.underReview}
+                      </span>
+                    </div>
+                  )}
+                  {stats.legal > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                      <span style={{ width: "5px", height: "5px", borderRadius: "50%", backgroundColor: "#38bdf8" }} />
+                      <span style={{ fontSize: "8px", fontFamily: "ui-monospace, monospace", color: "#38bdf8" }}>
+                        {stats.legal}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {/* Click hint */}
+                <div style={{
+                  fontSize: "7px", fontFamily: "ui-monospace, monospace",
+                  color: "rgba(255,255,255,0.25)", letterSpacing: "0.05em",
+                }}>
+                  クリックで詳細
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </Html>
     </group>
@@ -1735,50 +1902,89 @@ function OrbitPath({ target, color }: { target: [number, number, number]; color:
   return <primitive ref={lineRef} object={new THREE.LineLoop(geo, mat)} />;
 }
 
-// ─── Shooting Stars ─────────────────────────────────────
+// ─── Shooting Stars (glowing head + fading tail) ────────
+
+const METEOR_VERT = /* glsl */ `
+  attribute float aAlpha;
+  varying float vAlpha;
+  void main() {
+    vAlpha = aAlpha;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const METEOR_FRAG = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uOpacity;
+  varying float vAlpha;
+  void main() {
+    gl_FragColor = vec4(uColor * (0.5 + vAlpha * 1.5), vAlpha * uOpacity);
+  }
+`;
 
 interface ShootingStar {
   startX: number; startY: number; startZ: number;
   dx: number; dy: number; dz: number;
   speed: number; life: number; maxLife: number;
   length: number;
+  warm: boolean; // golden vs blue-white
 }
 
 function ShootingStars() {
   const MAX_STARS = 3;
+  const SEGMENTS = 12; // segments per trail for smooth gradient
   const starsRef = useRef<ShootingStar[]>([]);
-  const meshRef = useRef<THREE.Group>(null);
-  const linesRef = useRef<(THREE.Line | null)[]>([]);
+  const groupRef = useRef<THREE.Group>(null);
 
-  // Pre-create line geometries
+  // Pre-create geometries + materials with alpha gradient
   const geos = useMemo(() => {
     return Array.from({ length: MAX_STARS }, () => {
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+      const pos = new Float32Array(SEGMENTS * 3);
+      const alphas = new Float32Array(SEGMENTS);
+      // Alpha gradient: 0 at tail → 1 at head
+      for (let i = 0; i < SEGMENTS; i++) {
+        alphas[i] = i / (SEGMENTS - 1);
+      }
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute("aAlpha", new THREE.Float32BufferAttribute(alphas, 1));
       return geo;
     });
   }, []);
 
+  const uniforms = useMemo(() => {
+    return Array.from({ length: MAX_STARS }, () => ({
+      uColor: { value: new THREE.Color(0.8, 0.9, 1.0) },
+      uOpacity: { value: 0 },
+    }));
+  }, []);
+
   const mats = useMemo(() => {
-    return Array.from({ length: MAX_STARS }, () =>
-      new THREE.LineBasicMaterial({
-        color: new THREE.Color(0.8, 0.9, 1.0),
+    return uniforms.map((u) =>
+      new THREE.ShaderMaterial({
+        uniforms: u,
+        vertexShader: METEOR_VERT,
+        fragmentShader: METEOR_FRAG,
         transparent: true,
-        opacity: 0,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       })
     );
-  }, []);
+  }, [uniforms]);
+
+  // Glow sprites at meteor heads
+  const glowMap = useMemo(() => makeGlowMap(), []);
+  const spriteRefs = useRef<(THREE.Sprite | null)[]>([]);
 
   useFrame((_, delta) => {
     const stars = starsRef.current;
 
-    // Spawn new shooting star randomly
-    if (stars.length < MAX_STARS && Math.random() < 0.003) { // ~0.3% chance per frame
+    // Spawn
+    if (stars.length < MAX_STARS && Math.random() < 0.004) {
       const angle = Math.random() * Math.PI * 2;
       const elevation = Math.random() * 0.4 + 0.2;
       const dist = 40 + Math.random() * 30;
+      const warm = Math.random() < 0.25; // 25% golden meteors
       stars.push({
         startX: Math.cos(angle) * dist,
         startY: elevation * dist * 0.5 + 5,
@@ -1790,16 +1996,18 @@ function ShootingStars() {
         life: 0,
         maxLife: 0.8 + Math.random() * 1.2,
         length: 3 + Math.random() * 5,
+        warm,
       });
     }
 
-    // Update existing stars
+    // Update
     for (let i = stars.length - 1; i >= 0; i--) {
       const s = stars[i];
       s.life += delta;
       if (s.life > s.maxLife) {
         stars.splice(i, 1);
-        if (mats[i]) mats[i].opacity = 0;
+        uniforms[i].uOpacity.value = 0;
+        if (spriteRefs.current[i]) spriteRefs.current[i]!.visible = false;
         continue;
       }
 
@@ -1807,34 +2015,70 @@ function ShootingStars() {
       const headX = s.startX + s.dx * t;
       const headY = s.startY + s.dy * t;
       const headZ = s.startZ + s.dz * t;
-      const tailT = Math.max(0, t - s.length);
-      const tailX = s.startX + s.dx * tailT;
-      const tailY = s.startY + s.dy * tailT;
-      const tailZ = s.startZ + s.dz * tailT;
 
-      if (geos[i]) {
-        const pos = geos[i].attributes.position.array as Float32Array;
-        pos[0] = tailX; pos[1] = tailY; pos[2] = tailZ;
-        pos[3] = headX; pos[4] = headY; pos[5] = headZ;
-        geos[i].attributes.position.needsUpdate = true;
+      // Build trail segments from tail to head
+      const pos = geos[i].attributes.position.array as Float32Array;
+      for (let seg = 0; seg < SEGMENTS; seg++) {
+        const frac = seg / (SEGMENTS - 1); // 0=tail, 1=head
+        const segT = Math.max(0, t - s.length * (1 - frac));
+        pos[seg * 3] = s.startX + s.dx * segT;
+        pos[seg * 3 + 1] = s.startY + s.dy * segT;
+        pos[seg * 3 + 2] = s.startZ + s.dz * segT;
       }
+      geos[i].attributes.position.needsUpdate = true;
 
-      // Fade in then out
+      // Fade
       const progress = s.life / s.maxLife;
       const fadeIn = Math.min(progress * 5, 1);
       const fadeOut = progress > 0.7 ? 1 - (progress - 0.7) / 0.3 : 1;
-      if (mats[i]) mats[i].opacity = fadeIn * fadeOut * 0.6;
+      const opacity = fadeIn * fadeOut * 0.8;
+      uniforms[i].uOpacity.value = opacity;
+
+      // Color
+      if (s.warm) {
+        uniforms[i].uColor.value.setRGB(1.5, 1.1, 0.4);
+      } else {
+        uniforms[i].uColor.value.setRGB(0.8, 0.9, 1.2);
+      }
+
+      // Glow sprite at head
+      const sprite = spriteRefs.current[i];
+      if (sprite) {
+        sprite.visible = true;
+        sprite.position.set(headX, headY, headZ);
+        const glowScale = (s.warm ? 2.5 : 1.8) * opacity;
+        sprite.scale.setScalar(glowScale);
+        (sprite.material as THREE.SpriteMaterial).opacity = opacity * 0.5;
+        (sprite.material as THREE.SpriteMaterial).color.copy(uniforms[i].uColor.value);
+      }
+    }
+
+    // Hide unused slots
+    for (let i = stars.length; i < MAX_STARS; i++) {
+      uniforms[i].uOpacity.value = 0;
+      if (spriteRefs.current[i]) spriteRefs.current[i]!.visible = false;
     }
   });
 
   return (
-    <group ref={meshRef}>
+    <group ref={groupRef}>
       {geos.map((geo, i) => (
-        <primitive
-          key={i}
-          ref={(el: THREE.Line | null) => { linesRef.current[i] = el; }}
-          object={new THREE.Line(geo, mats[i])}
-        />
+        <Fragment key={i}>
+          <primitive object={new THREE.Line(geo, mats[i])} />
+          <sprite
+            ref={(el: THREE.Sprite | null) => { spriteRefs.current[i] = el; }}
+            visible={false}
+          >
+            <spriteMaterial
+              map={glowMap}
+              transparent
+              opacity={0}
+              toneMapped={false}
+              depthWrite={false}
+              blending={THREE.AdditiveBlending}
+            />
+          </sprite>
+        </Fragment>
       ))}
     </group>
   );
@@ -2139,6 +2383,7 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
           <Fragment key={w.id}>
             <OrbitPath target={w.position} color={w.glowColor} />
             <GoldenPath start={ORIGIN} end={w.position} delay={pathDelay} growDuration={pathDuration} />
+            <EnergyPulse start={ORIGIN} end={w.position} color={w.glowColor} interval={3 + i * 1.5} travelTime={2} />
             <NovaSpawn
               delay={planetDelay}
               color={w.glowColor}
@@ -2158,6 +2403,7 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
         return (
           <>
             <GoldenPath start={ORIGIN} end={BOOK_POSITION} delay={bookPathDelay} growDuration={bookPathDuration} />
+            <EnergyPulse start={ORIGIN} end={BOOK_POSITION} color="#d4a72d" interval={5} travelTime={2.5} />
             <NovaSpawn
               delay={bookDelay}
               color="#d4a72d"
