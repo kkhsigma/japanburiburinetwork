@@ -4,7 +4,6 @@ import { useRef, useMemo, useState, useEffect, createContext, useContext, Fragme
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, Stars } from "@react-three/drei";
 import * as THREE from "three";
-import { useRouter } from "next/navigation";
 
 // ─── Intro Animation Context ────────────────────────────
 const IntroContext = createContext({ skipIntro: false });
@@ -1538,7 +1537,6 @@ function SunNova({ children }: { children: React.ReactNode }) {
 // ─── Central Hub ────────────────────────────────────────
 
 function CentralHub() {
-  const router = useRouter();
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -1547,7 +1545,7 @@ function CentralHub() {
       <mesh
         onClick={(e) => {
           e.stopPropagation();
-          router.push("/");
+          window.location.href = "/";
         }}
         onPointerOver={(e) => {
           e.stopPropagation();
@@ -1891,7 +1889,6 @@ function ResponsiveFov({ baseFov = 45 }: { baseFov?: number }) {
 
 function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"; skipIntro?: boolean }) {
   const [travelTarget, setTravelTarget] = useState<string | null>(null);
-  const router = useRouter();
   const isLight = theme === "light";
 
   const handleSelect = (id: string) => {
@@ -1900,13 +1897,13 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
 
   const handleArrive = () => {
     if (travelTarget === "blog") {
-      router.push("/community");
+      window.location.href = "/community";
     } else if (travelTarget === "cannabis") {
-      router.push("/cannabis");
+      window.location.href = "/cannabis";
     } else if (travelTarget === "psychedelics") {
-      router.push("/psychedelics");
+      window.location.href = "/psychedelics";
     } else {
-      router.push(`/explore?category=${travelTarget}`);
+      window.location.href = `/explore?category=${travelTarget}`;
     }
   };
 
