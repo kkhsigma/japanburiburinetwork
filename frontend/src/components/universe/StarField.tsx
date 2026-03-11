@@ -21,11 +21,11 @@ export function StarField({ theme = "dark" }: { theme?: "dark" | "light" }) {
     let h = 0;
 
     // Stars — tiny static dots
-    const STAR_COUNT = 120;
+    const STAR_COUNT = 60;
     const stars: { x: number; y: number; r: number; brightness: number; twinkleSpeed: number }[] = [];
 
     // Particles — slowly drifting motes
-    const PARTICLE_COUNT = 35;
+    const PARTICLE_COUNT = 18;
     const particles: { x: number; y: number; r: number; vx: number; vy: number; opacity: number; hue: number }[] = [];
 
     function resize() {
@@ -85,7 +85,11 @@ export function StarField({ theme = "dark" }: { theme?: "dark" | "light" }) {
     }, 2000);
 
     let t = 0;
-    function draw() {
+    let lastDraw = 0;
+    function draw(now: number) {
+      // Throttle to ~20fps — stars don't need 60fps
+      if (now - lastDraw < 50) { raf = requestAnimationFrame(draw); return; }
+      lastDraw = now;
       t++;
       ctx!.clearRect(0, 0, w, h);
 

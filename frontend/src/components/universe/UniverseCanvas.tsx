@@ -47,7 +47,7 @@ function fbm3d(x: number, y: number, z: number, octaves: number): number {
 // ─── Equirectangular Planet Texture ─────────────────────
 
 function generatePlanetMap(worldId: string): HTMLCanvasElement {
-  const W = 768, H = 384;
+  const W = 512, H = 256;
   const cvs = document.createElement("canvas");
   cvs.width = W;
   cvs.height = H;
@@ -555,7 +555,7 @@ function Atmosphere({
 
   return (
     <mesh>
-      <sphereGeometry args={[radius * 1.35, 48, 48]} />
+      <sphereGeometry args={[radius * 1.35, 32, 16]} />
       <shaderMaterial
         transparent
         side={THREE.BackSide}
@@ -761,7 +761,7 @@ function PlanetNode({
         }}
         scale={hovered ? 1.1 : 1}
       >
-        <sphereGeometry args={[world.radius, 96, 48]} />
+        <sphereGeometry args={[world.radius, 64, 32]} />
         <meshStandardMaterial
           map={texture}
           roughness={0.45}
@@ -844,14 +844,14 @@ function DebrisField({
   color: string;
   bobPhase: number;
 }) {
-  const count = 28;
+  const count = 16;
   const groupRef = useRef<THREE.Group>(null);
 
   // Pre-generate debris orbits with varied parameters
   const debris = useMemo<DebrisInfo[]>(() => {
     const items: DebrisInfo[] = [];
     for (let i = 0; i < count; i++) {
-      const band = i < 8 ? 0 : i < 18 ? 1 : 2; // inner, mid, outer
+      const band = i < 5 ? 0 : i < 11 ? 1 : 2; // inner, mid, outer
       const baseDist = planetRadius * (1.6 + band * 0.5);
       items.push({
         dist: baseDist + (Math.random() - 0.5) * 0.4,
@@ -923,7 +923,7 @@ function DebrisField({
   });
 
   // Dust ring (flat particle ring around planet)
-  const dustCount = 60;
+  const dustCount = 30;
   const dustGeo = useMemo(() => {
     const g = new THREE.BufferGeometry();
     const pos = new Float32Array(dustCount * 3);
@@ -1004,30 +1004,35 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
   // Book cover texture - leather-like with gold lettering
   const coverTexture = useMemo(() => {
     const cvs = document.createElement("canvas");
-    cvs.width = 256;
-    cvs.height = 256;
+    cvs.width = 128;
+    cvs.height = 128;
     const ctx = cvs.getContext("2d")!;
-    for (let y = 0; y < 256; y++) {
-      for (let x = 0; x < 256; x++) {
-        const n = fbm3d(x * 0.04, y * 0.04, 0.5, 4);
-        const r = 160 + n * 60;
-        const g = 70 + n * 35;
-        const b = 10 + n * 15;
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
-        ctx.fillRect(x, y, 1, 1);
-      }
+    // Fast leather-like gradient instead of per-pixel noise
+    const grad = ctx.createLinearGradient(0, 0, 128, 128);
+    grad.addColorStop(0, "rgb(180, 85, 20)");
+    grad.addColorStop(0.3, "rgb(155, 68, 15)");
+    grad.addColorStop(0.6, "rgb(170, 78, 18)");
+    grad.addColorStop(1, "rgb(145, 62, 12)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 128, 128);
+    // Add subtle noise with random rects
+    for (let i = 0; i < 300; i++) {
+      const x = Math.random() * 128;
+      const y = Math.random() * 128;
+      ctx.fillStyle = `rgba(${Math.random() > 0.5 ? 255 : 0},${Math.random() > 0.5 ? 200 : 0},0,0.03)`;
+      ctx.fillRect(x, y, 2 + Math.random() * 4, 2 + Math.random() * 4);
     }
     ctx.strokeStyle = "rgba(212, 167, 45, 0.6)";
-    ctx.lineWidth = 6;
-    ctx.strokeRect(16, 16, 224, 224);
+    ctx.lineWidth = 3;
+    ctx.strokeRect(8, 8, 112, 112);
     ctx.strokeStyle = "rgba(212, 167, 45, 0.3)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(24, 24, 208, 208);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(12, 12, 104, 104);
     ctx.fillStyle = "rgba(245, 215, 120, 0.9)";
-    ctx.font = "bold 22px serif";
+    ctx.font = "bold 12px serif";
     ctx.textAlign = "center";
-    ctx.fillText("Community", 128, 105);
-    ctx.fillText("& Blog", 128, 135);
+    ctx.fillText("コミュニティ", 64, 58);
+    ctx.fillText("& ブログ", 64, 76);
     const tex = new THREE.CanvasTexture(cvs);
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
@@ -1295,14 +1300,14 @@ function NovaSpawn({
 
   const glowMap = useMemo(() => makeGlowMap(), []);
 
-  const rayGeo = useMemo(() => buildRayBurstGeo(16, 1.5, 5), []);
+  const rayGeo = useMemo(() => buildRayBurstGeo(10, 1.5, 5), []);
   const rayUniforms = useMemo(() => ({
     uColor: { value: new THREE.Color(color) },
     uOpacity: { value: 0 },
   }), [color]);
 
   const { pGeo, pVels, pCount } = useMemo(() => {
-    const cnt = 80;
+    const cnt = 40;
     const { geo, vels } = buildNovaParticles(cnt, 2, 5);
     return { pGeo: geo, pVels: vels, pCount: cnt };
   }, []);
@@ -1461,14 +1466,14 @@ function SunNova({ children }: { children: React.ReactNode }) {
 
   const glowMap = useMemo(() => makeGlowMap(), []);
 
-  const rayGeo = useMemo(() => buildRayBurstGeo(28, 2, 10), []);
+  const rayGeo = useMemo(() => buildRayBurstGeo(16, 2, 10), []);
   const rayUniforms = useMemo(() => ({
     uColor: { value: new THREE.Color(3, 2.2, 0.6) },
     uOpacity: { value: 0 },
   }), []);
 
   const { pGeo, pVels, pCount } = useMemo(() => {
-    const cnt = 120;
+    const cnt = 60;
     const { geo, vels } = buildNovaParticles(cnt, 3, 9);
     return { pGeo: geo, pVels: vels, pCount: cnt };
   }, []);
@@ -1909,7 +1914,7 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
       <Stars
         radius={120}
         depth={70}
-        count={isLight ? 3000 : 6000}
+        count={isLight ? 2000 : 4000}
         factor={isLight ? 3 : 4}
         saturation={isLight ? 0.3 : 0}
         fade
@@ -2030,7 +2035,7 @@ export function UniverseCanvas({
       <Canvas
         camera={{ position: [0, 12, 22], fov: 45 }}
         gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
-        dpr={[1, 2]}
+        dpr={[1, 1.5]}
         style={{ cursor: "auto" }}
       >
         <Suspense fallback={null}>
