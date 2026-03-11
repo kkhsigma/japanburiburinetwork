@@ -702,6 +702,13 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
 
   return (
     <>
+    {/* Version — top left */}
+    {!isTransitioning && (
+      <div className="fixed top-4 left-4 z-50 pointer-events-none">
+        <span className="text-[10px] font-mono text-white/20">v{process.env.NEXT_PUBLIC_APP_VERSION}</span>
+      </div>
+    )}
+
     {/* JST Clock — top right */}
     {!isTransitioning && (
       <div className="fixed top-4 right-4 z-50 flex items-center gap-2 pointer-events-none">

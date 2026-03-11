@@ -46,11 +46,6 @@ export default function Page() {
         <SignalFeed />
       </motion.div>
       <NotificationToast />
-      <div className="fixed bottom-4 right-4 z-10">
-        <span className="text-[10px] font-mono text-[#64748b]/30">
-          v{process.env.NEXT_PUBLIC_APP_VERSION}
-        </span>
-      </div>
     </div>
   );
 }
