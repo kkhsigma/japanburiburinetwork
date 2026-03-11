@@ -383,6 +383,14 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
   const lastShakeRef = useRef(0);
   const shakeFlashRef = useRef(0); // 0→1 flash animation progress
 
+  // ── Feature 4: Gravity well (long-press) ──
+  const gravityWellRef = useRef<{ x: number; y: number; active: boolean; strength: number; timer: ReturnType<typeof setTimeout> | null }>({
+    x: 0, y: 0, active: false, strength: 0, timer: null,
+  });
+
+  // ── Feature 5: Tilt to flow (mobile gyroscope) ──
+  const tiltRef = useRef({ x: 0, y: 0 }); // normalized tilt: -1 to 1
+
   // Pre-built lookup for O(1) compound data access in physics loop
   const compLookup = useRef(new Map(
     mockCompounds.map((c) => [c.id, { family: c.chemical_family ?? "Other", hex: statusHex[c.legal_status_japan] || statusHex.unknown, risk: c.risk_level, status: c.legal_status_japan }])
@@ -566,6 +574,76 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
     };
     window.addEventListener("devicemotion", onDeviceMotion);
 
+    // ── Feature 5: Tilt to flow (mobile gyroscope) ──
+    const onDeviceOrientation = (e: DeviceOrientationEvent) => {
+      // beta = front-back tilt (-180→180), gamma = left-right tilt (-90→90)
+      const beta = e.beta ?? 0;
+      const gamma = e.gamma ?? 0;
+      // Normalize to -1→1 range, subtract ~45° resting angle for beta (holding phone)
+      tiltRef.current = {
+        x: Math.max(-1, Math.min(1, gamma / 30)),     // left-right
+        y: Math.max(-1, Math.min(1, (beta - 45) / 30)), // forward-back (adjusted for holding angle)
+      };
+    };
+    window.addEventListener("deviceorientation", onDeviceOrientation);
+
+    // ── Feature 4: Gravity well — long-press on container ──
+    const LONG_PRESS_MS = 400;
+    const gw = gravityWellRef.current;
+
+    const startGravityWell = (x: number, y: number) => {
+      const r = container.getBoundingClientRect();
+      gw.x = x - r.left;
+      gw.y = y - r.top;
+      gw.strength = 0;
+      gw.timer = setTimeout(() => {
+        gw.active = true;
+      }, LONG_PRESS_MS);
+    };
+    const endGravityWell = () => {
+      if (gw.timer) { clearTimeout(gw.timer); gw.timer = null; }
+      if (gw.active) {
+        // Release: fling all molecules outward from the well
+        const cards = cardsRef.current;
+        for (const card of cards) {
+          const dx = card.x - gw.x;
+          const dy = card.y - gw.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const fling = Math.max(0, 3 - dist * 0.005) + Math.random();
+          card.vx += (dx / dist) * fling;
+          card.vy += (dy / dist) * fling;
+          card.squishX = 1.2; card.squishY = 0.8;
+        }
+        // Spawn release shockwave
+        const shockwaves = shockwavesRef.current;
+        if (shockwaves.length < MAX_SHOCKWAVES) {
+          shockwaves.push({ x: gw.x, y: gw.y, radius: 0, maxRadius: 200, life: 0, hex: "#8b5cf6" });
+        }
+      }
+      gw.active = false;
+      gw.strength = 0;
+    };
+    const moveGravityWell = (x: number, y: number) => {
+      if (gw.timer || gw.active) {
+        const r = container.getBoundingClientRect();
+        gw.x = x - r.left;
+        gw.y = y - r.top;
+      }
+    };
+
+    // Mouse long-press
+    container.addEventListener("mousedown", (e: MouseEvent) => startGravityWell(e.clientX, e.clientY));
+    window.addEventListener("mouseup", endGravityWell);
+    // Touch long-press
+    container.addEventListener("touchstart", (e: TouchEvent) => {
+      if (e.touches.length === 1) startGravityWell(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true });
+    window.addEventListener("touchend", endGravityWell);
+    window.addEventListener("touchcancel", endGravityWell);
+    container.addEventListener("touchmove", (e: TouchEvent) => {
+      if (e.touches.length === 1) moveGravityWell(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true });
+
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("scroll", onScroll, { passive: true });
     container.addEventListener("mouseleave", onMouseLeave);
@@ -630,26 +708,61 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       // Decay cursor speed over frames for smooth transitions
       mouseSpeedRef.current *= 0.85;
 
+      // ── Feature 4: Gravity well — ramp up strength while held ──
+      const gwActive = gravityWellRef.current.active;
+      if (gwActive) {
+        gravityWellRef.current.strength = Math.min(gravityWellRef.current.strength + 0.002, 0.06);
+      }
+      const gwX = gravityWellRef.current.x;
+      const gwY = gravityWellRef.current.y;
+      const gwStr = gravityWellRef.current.strength;
+
+      // ── Feature 5: Tilt force ──
+      const tiltX = tiltRef.current.x;
+      const tiltY = tiltRef.current.y;
+
       for (const card of cards) {
+        // Magnetic cursor
         const dmx = card.x - mx;
         const dmy = card.y - my;
         const mouseDist = Math.sqrt(dmx * dmx + dmy * dmy);
         const MOUSE_RADIUS = 160;
         if (mouseDist > 20 && mouseDist < MOUSE_RADIUS && mouseDist > 0) {
-          const proximity = (MOUSE_RADIUS - mouseDist) / MOUSE_RADIUS; // 0→1
-          // Speed threshold: below 8px/frame = attract, above = repel
-          const speedFactor = cursorSpeed / 8; // <1 = slow, >1 = fast
+          const proximity = (MOUSE_RADIUS - mouseDist) / MOUSE_RADIUS;
+          const speedFactor = cursorSpeed / 8;
           if (speedFactor > 1) {
-            // REPEL — blast wave, stronger with speed
             const repelForce = proximity * Math.min(speedFactor * 0.015, 0.06);
             card.vx += (dmx / mouseDist) * repelForce;
             card.vy += (dmy / mouseDist) * repelForce;
           } else {
-            // ATTRACT — gentle gravitational pull
             const attractForce = proximity * 0.004 * (1 - speedFactor * 0.5);
             card.vx -= (dmx / mouseDist) * attractForce;
             card.vy -= (dmy / mouseDist) * attractForce;
           }
+        }
+
+        // ── Feature 4: Gravity well pull — orbit style ──
+        if (gwActive && gwStr > 0) {
+          const gdx = gwX - card.x;
+          const gdy = gwY - card.y;
+          const gDist = Math.sqrt(gdx * gdx + gdy * gdy) || 1;
+          // Pull toward well center with inverse-distance falloff
+          const pullForce = gwStr * Math.min(300 / gDist, 3);
+          card.vx += (gdx / gDist) * pullForce;
+          card.vy += (gdy / gDist) * pullForce;
+          // Add tangential velocity for orbital motion (perpendicular to pull direction)
+          const tangentForce = gwStr * Math.min(150 / gDist, 1.5) * 0.6;
+          card.vx += (-gdy / gDist) * tangentForce;
+          card.vy += (gdx / gDist) * tangentForce;
+          // Extra damping in gravity well to prevent runaway speeds
+          card.vx *= 0.97;
+          card.vy *= 0.97;
+        }
+
+        // ── Feature 5: Tilt to flow — apply as constant acceleration ──
+        if (Math.abs(tiltX) > 0.05 || Math.abs(tiltY) > 0.05) {
+          card.vx += tiltX * 0.04;
+          card.vy += tiltY * 0.04;
         }
 
         card.x += card.vx;
@@ -919,6 +1032,50 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
               ctx.fillRect(0, 0, cw, ch);
             }
 
+            // ── Feature 4: Gravity well visual — swirling vortex ──
+            if (gwActive && gwStr > 0) {
+              const gt = globalTime.current;
+              // Pulsing core glow
+              const coreSize = 8 + Math.sin(gt * 6) * 3;
+              ctx.globalAlpha = Math.min(gwStr * 8, 0.5);
+              const coreGrad = ctx.createRadialGradient(gwX, gwY, 0, gwX, gwY, coreSize * 5);
+              coreGrad.addColorStop(0, "rgba(139,92,246,0.6)");
+              coreGrad.addColorStop(0.4, "rgba(139,92,246,0.15)");
+              coreGrad.addColorStop(1, "transparent");
+              ctx.fillStyle = coreGrad;
+              ctx.beginPath();
+              ctx.arc(gwX, gwY, coreSize * 5, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Rotating orbital rings
+              const ringCount = 3;
+              for (let r = 0; r < ringCount; r++) {
+                const ringRadius = 25 + r * 22 + Math.sin(gt * 3 + r) * 5;
+                const rotation = gt * (2 - r * 0.4);
+                ctx.globalAlpha = Math.min(gwStr * 6, 0.3) * (1 - r * 0.25);
+                ctx.strokeStyle = "#8b5cf6";
+                ctx.lineWidth = 1.2 - r * 0.3;
+                ctx.beginPath();
+                // Draw partial arc (not full circle) for dynamic look
+                ctx.arc(gwX, gwY, ringRadius, rotation, rotation + Math.PI * 1.4);
+                ctx.stroke();
+              }
+
+              // Spiral particle dots orbiting the well
+              const dotCount = 8;
+              for (let d = 0; d < dotCount; d++) {
+                const angle = gt * 3 + (d / dotCount) * Math.PI * 2;
+                const orbitR = 15 + (d % 3) * 18 + Math.sin(gt * 2 + d) * 6;
+                const dx = gwX + Math.cos(angle) * orbitR;
+                const dy = gwY + Math.sin(angle) * orbitR;
+                ctx.globalAlpha = Math.min(gwStr * 10, 0.5);
+                ctx.fillStyle = d % 2 === 0 ? "#8b5cf6" : "#a78bfa";
+                ctx.beginPath();
+                ctx.arc(dx, dy, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+
             // Feature 3: Hover pulse resonance glow (drawn as expanding rings)
             const hId = hoveredIdRef.current;
             if (hId) {
@@ -1023,9 +1180,14 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
     return () => {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", endGravityWell);
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("devicemotion", onDeviceMotion);
+      window.removeEventListener("deviceorientation", onDeviceOrientation);
+      window.removeEventListener("touchend", endGravityWell);
+      window.removeEventListener("touchcancel", endGravityWell);
       container.removeEventListener("mouseleave", onMouseLeave);
+      if (gravityWellRef.current.timer) clearTimeout(gravityWellRef.current.timer);
       cancelAnimationFrame(animRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
