@@ -438,8 +438,8 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
 
     const cards: FloatingCard[] = mockCompounds.map((compound) => {
       let x: number, y: number, attempts = 0;
-      // Bias toward upper 70% so molecules don't cluster near the substance bar
-      const maxInitY = h * 0.7;
+      // Distribute across 85% of height, avoiding substance bar at bottom
+      const maxInitY = h * 0.85;
       do {
         x = padX + Math.random() * (w - padX * 2);
         y = padY + Math.random() * (maxInitY - padY);
@@ -798,14 +798,27 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         const maxY = Math.min(ch - padY, barTop - CARD_H / 2);
         if (card.y > maxY) { card.y = maxY; card.vy = -0.4; }
 
-        // Center exclusion zone
+        // Center exclusion zone — push out along the shortest escape axis
         const relX = card.x - cx;
         const relY = card.y - cy;
         if (Math.abs(relX) < exW && Math.abs(relY) < exH) {
-          const pushX = relX > 0 ? exW - relX : -(exW + relX);
-          const pushY = relY > 0 ? exH - relY : -(exH + relY);
-          if (Math.abs(pushX) < Math.abs(pushY)) card.vx += pushX * 0.04;
-          else card.vy += pushY * 0.04;
+          const overlapX = exW - Math.abs(relX);
+          const overlapY = exH - Math.abs(relY);
+          if (overlapX < overlapY) {
+            // Escape horizontally (shorter path)
+            card.vx += Math.sign(relX || 1) * overlapX * 0.02;
+          } else {
+            // Escape vertically — bias downward to avoid top-stacking
+            const pushDir = relY >= 0 ? 1 : (card.y < ch * 0.3 ? 1 : -1);
+            card.vy += pushDir * overlapY * 0.02;
+          }
+        }
+
+        // Anti-clustering: gentle force toward vertical center when too far from it
+        const verticalCenter = ch * 0.45;
+        const distFromCenter = card.y - verticalCenter;
+        if (Math.abs(distFromCenter) > ch * 0.3) {
+          card.vy -= Math.sign(distFromCenter) * 0.008;
         }
 
         // No gravity — molecules float freely in space
