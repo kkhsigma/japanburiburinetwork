@@ -6,7 +6,7 @@ import { Eye } from "lucide-react";
 export function EmptyWatchlist() {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
-      <div className="w-12 h-12 rounded-full bg-[#1e293b] flex items-center justify-center mb-4">
+      <div className="w-12 h-12 rounded-full bg-[#1e1e1e] flex items-center justify-center mb-4">
         <Eye size={20} className="text-[#64748b]" />
       </div>
       <p className="text-[#94a3b8] text-base font-medium mb-2">

@@ -8,10 +8,10 @@
 
 :root {
   /* --- Base palette --- */
-  --color-bg-base: #06090f;
-  --color-bg-raised: #0c1220;
-  --color-bg-elevated: #111827;
-  --color-bg-overlay: #1a2332;
+  --color-bg-base: #030303;
+  --color-bg-raised: #0a0a0a;
+  --color-bg-elevated: #111111;
+  --color-bg-overlay: #1a1a1a;
 
   /* --- Accent --- */
   --color-accent: #1a9a8a;
@@ -25,9 +25,9 @@
   --color-text-muted: #64748b;
 
   /* --- Border --- */
-  --color-border: #1e293b;
-  --color-border-subtle: #151d2e;
-  --color-border-hover: #2d3a50;
+  --color-border: #1e1e1e;
+  --color-border-subtle: #151515;
+  --color-border-hover: #2d2d2d;
 
   /* --- Focus --- */
   --color-focus-ring: rgba(26, 154, 138, 0.4);

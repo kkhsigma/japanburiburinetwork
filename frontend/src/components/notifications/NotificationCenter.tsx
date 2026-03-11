@@ -76,10 +76,10 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -8, scale: 0.96 }}
           transition={{ type: "spring", stiffness: 500, damping: 30 }}
-          className="absolute top-full right-0 mt-2 w-[360px] max-h-[480px] bg-[#111827] border border-[#1e293b] rounded-xl shadow-2xl overflow-hidden z-50"
+          className="absolute top-full right-0 mt-2 w-[360px] max-h-[480px] bg-[#111111] border border-[#1e1e1e] rounded-xl shadow-2xl overflow-hidden z-50"
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e293b]">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e1e1e]">
             <h3 className="text-sm font-semibold text-[#e2e8f0]">
               通知
               {unreadCount > 0 && (
@@ -100,7 +100,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
           </div>
 
           {/* Notification List */}
-          <div className="overflow-y-auto max-h-[420px] divide-y divide-[#1e293b]/50">
+          <div className="overflow-y-auto max-h-[420px] divide-y divide-[#1e1e1e]/50">
             {notifications.length === 0 ? (
               <div className="px-4 py-12 text-center">
                 <p className="text-sm text-[#64748b]">通知はまだありません</p>
@@ -121,8 +121,8 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
                   }}
                   className={`
                     w-full text-left px-4 py-3 flex items-start gap-3
-                    hover:bg-[#1a2332] transition-colors
-                    ${!notification.read ? "bg-[#0c1220]" : ""}
+                    hover:bg-[#1a1a1a] transition-colors
+                    ${!notification.read ? "bg-[#0a0a0a]" : ""}
                   `}
                 >
                   {/* Severity dot */}

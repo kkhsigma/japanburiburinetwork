@@ -46,14 +46,14 @@ export default function AlertsPage() {
   const paginated = filtered.slice((currentPage - 1) * limit, currentPage * limit);
 
   return (
-    <div className="min-h-screen bg-[#06090f] text-[#e2e8f0]">
+    <div className="min-h-screen bg-[#030303] text-[#e2e8f0]">
       {/* Sticky header */}
-      <header className="sticky top-0 z-50 border-b border-[#1e293b] bg-[#06090f]/80 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b border-[#1e1e1e] bg-[#030303]/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <Link
               href="/universe"
-              className="flex items-center justify-center rounded-md p-1.5 text-[#94a3b8] hover:text-[#e2e8f0] hover:bg-[#1e293b] transition-colors"
+              className="flex items-center justify-center rounded-md p-1.5 text-[#94a3b8] hover:text-[#e2e8f0] hover:bg-[#1e1e1e] transition-colors"
               aria-label="Back to universe"
             >
               <svg
@@ -118,7 +118,7 @@ export default function AlertsPage() {
             <p className="text-xs text-[#64748b] mb-3">Could not load alerts. Showing cached data.</p>
             <button
               onClick={() => refetch()}
-              className="rounded-md px-4 py-2 text-xs text-[#1a9a8a] hover:bg-[#1e293b] transition-colors"
+              className="rounded-md px-4 py-2 text-xs text-[#1a9a8a] hover:bg-[#1e1e1e] transition-colors"
             >
               再読み込み / Retry
             </button>
@@ -160,7 +160,7 @@ export default function AlertsPage() {
             <p className="text-sm text-[#64748b]">No alerts match your filters.</p>
             <button
               onClick={resetFilters}
-              className="mt-3 rounded-md px-4 py-2 text-xs text-[#3b82f6] hover:bg-[#1e293b] transition-colors"
+              className="mt-3 rounded-md px-4 py-2 text-xs text-[#3b82f6] hover:bg-[#1e1e1e] transition-colors"
             >
               Clear filters
             </button>

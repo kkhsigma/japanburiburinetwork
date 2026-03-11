@@ -9,20 +9,20 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // --- Deep navy/slate base layers ---
+        // --- Deep black base layers ---
         navy: {
-          DEFAULT: "#06090f",
-          50: "#e8ecf4",
-          100: "#c4cdd9",
-          200: "#8e9db3",
-          300: "#5e7290",
-          400: "#374d6b",
-          500: "#1e293b",
-          600: "#1a2332",
-          700: "#111827",
-          800: "#0c1220",
-          900: "#06090f",
-          950: "#030507",
+          DEFAULT: "#030303",
+          50: "#e8e8e8",
+          100: "#c4c4c4",
+          200: "#8e8e8e",
+          300: "#5e5e5e",
+          400: "#373737",
+          500: "#1e1e1e",
+          600: "#1a1a1a",
+          700: "#111111",
+          800: "#0a0a0a",
+          900: "#030303",
+          950: "#000000",
         },
         // --- Primary accent: muted teal ---
         accent: {
@@ -97,22 +97,22 @@ const config: Config = {
         },
         // --- Text hierarchy ---
         text: {
-          primary: "#e2e8f0",
-          secondary: "#94a3b8",
-          muted: "#64748b",
-          inverse: "#06090f",
+          primary: "#e2e2e2",
+          secondary: "#949494",
+          muted: "#646464",
+          inverse: "#030303",
         },
         // --- Surface & border ---
         surface: {
-          base: "#06090f",
-          raised: "#0c1220",
-          elevated: "#111827",
-          overlay: "#1a2332",
+          base: "#030303",
+          raised: "#0a0a0a",
+          elevated: "#111111",
+          overlay: "#1a1a1a",
         },
         border: {
-          DEFAULT: "#1e293b",
-          subtle: "#151d2e",
-          hover: "#2d3a50",
+          DEFAULT: "#1e1e1e",
+          subtle: "#151515",
+          hover: "#2d2d2d",
         },
       },
       fontFamily: {

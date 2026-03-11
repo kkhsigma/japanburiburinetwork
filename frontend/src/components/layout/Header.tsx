@@ -37,7 +37,7 @@ export function Header() {
       <header
         className="md:hidden sticky top-0 z-40"
         style={{
-          background: "linear-gradient(180deg, rgba(8,13,22,0.95) 0%, rgba(8,13,22,0.85) 100%)",
+          background: "linear-gradient(180deg, rgba(3,3,3,0.95) 0%, rgba(3,3,3,0.85) 100%)",
           backdropFilter: "blur(16px)",
           borderBottom: "1px solid rgba(255,255,255,0.06)",
         }}
@@ -92,7 +92,7 @@ export function Header() {
       <header
         className="hidden md:block sticky top-0 z-40"
         style={{
-          background: "linear-gradient(180deg, rgba(6,9,15,0.9) 0%, rgba(6,9,15,0.8) 100%)",
+          background: "linear-gradient(180deg, rgba(3,3,3,0.9) 0%, rgba(3,3,3,0.8) 100%)",
           backdropFilter: "blur(16px)",
           borderBottom: "1px solid rgba(255,255,255,0.04)",
         }}
@@ -109,7 +109,7 @@ export function Header() {
             {/* Breadcrumb */}
             <div className="flex items-center gap-2 text-sm">
               <span className="text-[#4a5568] font-mono text-xs tracking-wide">JBN</span>
-              <span className="text-[#1e293b]">/</span>
+              <span className="text-[#1e1e1e]">/</span>
               <span className="text-[#e2e8f0] font-medium tracking-tight">{pageTitle}</span>
             </div>
 

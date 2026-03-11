@@ -107,13 +107,13 @@ export default function WatchlistPage() {
       );
 
   return (
-    <div className="min-h-screen bg-[#06090f] text-[#e2e8f0]">
+    <div className="min-h-screen bg-[#030303] text-[#e2e8f0]">
       {/* Sticky header */}
-      <header className="sticky top-0 z-30 bg-[#06090f]/90 backdrop-blur-md border-b border-[#1e293b]">
+      <header className="sticky top-0 z-30 bg-[#030303]/90 backdrop-blur-md border-b border-[#1e1e1e]">
         <div className="max-w-5xl mx-auto flex items-center gap-3 px-4 py-3">
           <Link
             href="/universe"
-            className="p-1.5 rounded-md hover:bg-[#1a2332] transition-colors"
+            className="p-1.5 rounded-md hover:bg-[#1a1a1a] transition-colors"
             aria-label="Back to universe"
           >
             <ArrowLeft size={18} className="text-[#94a3b8]" />
@@ -153,7 +153,7 @@ export default function WatchlistPage() {
             <p className="text-xs text-[#64748b] mb-3">Could not load watchlist. Showing cached data.</p>
             <button
               onClick={() => refetch()}
-              className="rounded-md px-4 py-2 text-xs text-[#1a9a8a] hover:bg-[#1e293b] transition-colors"
+              className="rounded-md px-4 py-2 text-xs text-[#1a9a8a] hover:bg-[#1e1e1e] transition-colors"
             >
               再読み込み / Retry
             </button>
@@ -193,7 +193,7 @@ export default function WatchlistPage() {
                       transition-all whitespace-nowrap border
                       ${isActive
                         ? "border-opacity-60 bg-opacity-20"
-                        : "border-[#1e293b] bg-transparent text-[#64748b] hover:text-[#94a3b8] hover:border-[#2d3a4d]"
+                        : "border-[#1e1e1e] bg-transparent text-[#64748b] hover:text-[#94a3b8] hover:border-[#2d3a4d]"
                       }
                     `}
                     style={
@@ -244,12 +244,12 @@ export default function WatchlistPage() {
                     >
                       <Link
                         href={`/explore/compounds/${entry.entity_id}`}
-                        className="block relative rounded-lg border border-[#1e293b] bg-[#111827] p-4 hover:border-[#2d3a4d] transition-colors cursor-pointer"
+                        className="block relative rounded-lg border border-[#1e1e1e] bg-[#111111] p-4 hover:border-[#2d3a4d] transition-colors cursor-pointer"
                       >
                         {/* Remove button */}
                         <button
                           onClick={(e) => handleRemove(e, entry.id)}
-                          className="absolute top-3 right-3 p-1 rounded-md text-[#64748b] hover:text-[#e2e8f0] hover:bg-[#1a2332] transition-colors z-10"
+                          className="absolute top-3 right-3 p-1 rounded-md text-[#64748b] hover:text-[#e2e8f0] hover:bg-[#1a1a1a] transition-colors z-10"
                           aria-label={`Remove ${entry.entity_name}`}
                         >
                           <X size={14} />
@@ -270,7 +270,7 @@ export default function WatchlistPage() {
                         </div>
 
                         {/* Legal status badge */}
-                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-[#1a2332] text-[#94a3b8] mb-2">
+                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-[#1a1a1a] text-[#94a3b8] mb-2">
                           {legalLabel}
                         </span>
 
@@ -286,7 +286,7 @@ export default function WatchlistPage() {
                         </span>
 
                         {/* Footer: last updated + notification toggle */}
-                        <div className="flex items-center justify-between pt-2 border-t border-[#1e293b] mt-2">
+                        <div className="flex items-center justify-between pt-2 border-t border-[#1e1e1e] mt-2">
                           <span className="text-[11px] text-[#64748b]">
                             {format(new Date(entry.created_at), "yyyy/MM/dd")}
                           </span>

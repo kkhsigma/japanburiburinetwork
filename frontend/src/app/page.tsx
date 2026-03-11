@@ -28,7 +28,7 @@ export default function Page() {
   }, [transitionState]);
 
   return (
-    <div className="relative min-h-screen bg-[#06090f]">
+    <div className="relative min-h-screen bg-[#030303]">
       <ParticleField transitionState={transitionState} />
       <FloatingCardsBg transitionState={transitionState} />
       <BlackHoleTransition transitionState={transitionState} />

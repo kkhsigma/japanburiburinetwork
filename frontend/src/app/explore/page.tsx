@@ -51,14 +51,14 @@ export default function ExplorePage() {
     : compoundsData;
 
   return (
-    <div className="min-h-screen bg-[#06090f] relative">
+    <div className="min-h-screen bg-[#030303] relative">
       {/* Subtle background gradient */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-[#1a9a8a]/[0.03] rounded-full blur-[120px]" />
       </div>
 
       {/* Minimal header */}
-      <header className="sticky top-0 z-40 bg-[#06090f]/80 backdrop-blur-xl border-b border-[#1e293b]/50">
+      <header className="sticky top-0 z-40 bg-[#030303]/80 backdrop-blur-xl border-b border-[#1e1e1e]/50">
         <div className="max-w-5xl mx-auto px-4 md:px-6">
           <div className="flex items-center h-14 gap-4">
             <Link
@@ -68,7 +68,7 @@ export default function ExplorePage() {
               <ArrowLeft size={18} />
               <span className="text-xs font-medium hidden sm:inline">ユニバース</span>
             </Link>
-            <div className="h-4 w-px bg-[#1e293b]" />
+            <div className="h-4 w-px bg-[#1e1e1e]" />
             <span className="text-sm font-medium text-[#e2e8f0]">
               探索
             </span>
@@ -122,7 +122,7 @@ export default function ExplorePage() {
                 <p className="text-[#64748b] text-xs mb-3">Could not load compounds. Showing cached data.</p>
                 <button
                   onClick={() => compoundsQuery.refetch()}
-                  className="rounded-md px-4 py-2 text-xs text-[#1a9a8a] hover:bg-[#1e293b] transition-colors"
+                  className="rounded-md px-4 py-2 text-xs text-[#1a9a8a] hover:bg-[#1e1e1e] transition-colors"
                 >
                   再読み込み / Retry
                 </button>

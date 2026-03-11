@@ -1198,25 +1198,382 @@ function DebrisField({
 }
 
 // ─── Floating Book (Community / Blog) ────────────────────
+// Premium magical book with full-page glow and fine dust particles
 
 const BOOK_POSITION: [number, number, number] = [-6, -0.5, -4];
+
+// Procedural leather texture shader for book covers
+function useLeatherMaterial(baseColor: string, emissiveColor: string) {
+  return useMemo(() => {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uBaseColor: { value: new THREE.Color(baseColor) },
+        uEmissiveColor: { value: new THREE.Color(emissiveColor) },
+        uTime: { value: 0 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+
+        void main() {
+          vUv = uv;
+          vNormal = normalize(normalMatrix * normal);
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          vViewPosition = -mvPosition.xyz;
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uBaseColor;
+        uniform vec3 uEmissiveColor;
+        uniform float uTime;
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+
+        // Simplex noise for leather grain
+        vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+
+        float snoise(vec2 v) {
+          const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+          vec2 i  = floor(v + dot(v, C.yy));
+          vec2 x0 = v - i + dot(i, C.xx);
+          vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+          vec4 x12 = x0.xyxy + C.xxzz;
+          x12.xy -= i1;
+          i = mod289(i);
+          vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0)) + i.x + vec3(0.0, i1.x, 1.0));
+          vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+          m = m*m; m = m*m;
+          vec3 x = 2.0 * fract(p * C.www) - 1.0;
+          vec3 h = abs(x) - 0.5;
+          vec3 ox = floor(x + 0.5);
+          vec3 a0 = x - ox;
+          m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);
+          vec3 g;
+          g.x = a0.x * x0.x + h.x * x0.y;
+          g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+          return 130.0 * dot(m, g);
+        }
+
+        void main() {
+          // Multi-scale leather grain
+          float grain1 = snoise(vUv * 40.0) * 0.5 + 0.5;
+          float grain2 = snoise(vUv * 80.0 + 100.0) * 0.5 + 0.5;
+          float grain3 = snoise(vUv * 15.0 + 50.0) * 0.5 + 0.5;
+          float leather = grain1 * 0.5 + grain2 * 0.3 + grain3 * 0.2;
+
+          // Worn edges effect
+          float edgeWear = smoothstep(0.0, 0.15, vUv.x) * smoothstep(1.0, 0.85, vUv.x);
+          edgeWear *= smoothstep(0.0, 0.1, vUv.y) * smoothstep(1.0, 0.9, vUv.y);
+
+          // Color variation
+          vec3 color = uBaseColor;
+          color = mix(color * 0.7, color * 1.1, leather);
+          color = mix(color * 1.2, color, edgeWear); // lighter at edges (worn)
+
+          // Fresnel rim lighting
+          vec3 viewDir = normalize(vViewPosition);
+          float fresnel = pow(1.0 - max(dot(viewDir, vNormal), 0.0), 3.0);
+          color += fresnel * 0.15;
+
+          // Subtle emissive
+          color += uEmissiveColor * 0.25;
+
+          // Specular highlights
+          vec3 lightDir = normalize(vec3(1.0, 1.0, 0.5));
+          vec3 halfVec = normalize(lightDir + viewDir);
+          float spec = pow(max(dot(vNormal, halfVec), 0.0), 32.0);
+          color += spec * 0.2 * (1.0 - leather * 0.5); // less spec in grain
+
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `,
+    });
+  }, [baseColor, emissiveColor]);
+}
+
+// Procedural aged pages material with glow on open
+function usePagesMaterial() {
+  return useMemo(() => {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uOpenAmount: { value: 0 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vPosition;
+
+        void main() {
+          vUv = uv;
+          vNormal = normalize(normalMatrix * normal);
+          vPosition = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform float uOpenAmount;
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vPosition;
+
+        float rand(vec2 co) {
+          return fract(sin(dot(co.xy, vec2(12.9898,78.233))) * 43758.5453);
+        }
+
+        void main() {
+          // Base cream color
+          vec3 pageColor = vec3(0.96, 0.93, 0.86);
+
+          // Age spots and variation
+          float spots = rand(floor(vUv * 50.0)) * 0.08;
+          float foxing = rand(floor(vUv * 20.0 + 100.0)) * 0.05;
+
+          // Yellowing at edges
+          float edgeDist = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
+          float yellowing = smoothstep(0.0, 0.3, edgeDist);
+          vec3 yellowTint = vec3(0.92, 0.85, 0.7);
+
+          pageColor = mix(yellowTint, pageColor, yellowing);
+          pageColor -= spots;
+          pageColor -= foxing * vec3(0.3, 0.25, 0.1);
+
+          // Page lines (horizontal striations)
+          float lines = sin(vUv.y * 200.0) * 0.02 + 0.98;
+          pageColor *= lines;
+
+          // Base subtle golden emissive
+          vec3 emissive = vec3(0.85, 0.7, 0.3) * 0.08;
+
+          // === BRIGHT GLOW WHEN HOVERED ===
+          // The entire page block glows golden-white when open
+          vec3 glowColor = vec3(1.0, 0.92, 0.7); // warm golden-white
+          float glowIntensity = uOpenAmount * 3.0;
+
+          // Uniform glow across entire surface
+          emissive += glowColor * glowIntensity;
+
+          // Final color - pages become bright golden when open
+          vec3 finalColor = mix(pageColor, glowColor * 1.5, uOpenAmount * 0.7) + emissive;
+
+          gl_FragColor = vec4(finalColor, 1.0);
+        }
+      `,
+      toneMapped: false, // Allow HDR glow
+    });
+  }, []);
+}
 
 function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
   const groupRef = useRef<THREE.Group>(null);
   const coverRef = useRef<THREE.Group>(null);
+  const pagesRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
   const openAmount = useRef(0);
+  const hoverStartTime = useRef(0);
 
   const bookW = 2.0;
   const bookH = 2.5;
   const bookD = 0.4;
-  const coverThick = 0.04;
+  const coverThick = 0.05;
 
-  // Front cover pivots at spine (left edge)
+  // Premium materials
+  const coverMaterial = useLeatherMaterial("#1a0a1e", "#2a1535");
+  const spineMaterial = useLeatherMaterial("#251030", "#351545");
+  const pagesMaterial = usePagesMaterial();
+
+  // Front cover geometry (pivots at spine)
   const frontCoverGeo = useMemo(() => {
-    const geo = new THREE.BoxGeometry(bookW, bookH, coverThick);
-    geo.translate(bookW / 2, 0, 0); // pivot at left edge
+    const geo = new THREE.BoxGeometry(bookW, bookH, coverThick, 8, 8, 1);
+    geo.translate(bookW / 2, 0, 0);
     return geo;
+  }, []);
+
+  // 3D Orbiting puzzle pieces - 4 shapes
+  const puzzleCount = 16;
+  const puzzleMeshRef0 = useRef<THREE.InstancedMesh>(null);
+  const puzzleMeshRef1 = useRef<THREE.InstancedMesh>(null);
+  const puzzleMeshRef2 = useRef<THREE.InstancedMesh>(null);
+  const puzzleMeshRef3 = useRef<THREE.InstancedMesh>(null);
+  const puzzleMeshRefs = useMemo(() => [puzzleMeshRef0, puzzleMeshRef1, puzzleMeshRef2, puzzleMeshRef3], []);
+  const puzzleDummy = useMemo(() => new THREE.Object3D(), []);
+
+  // Orbit data for each puzzle piece (mutable for regeneration)
+  const puzzleOrbits = useRef<Array<{
+    dist: number;
+    angle: number;
+    tilt: number;
+    speed: number;
+    yOff: number;
+    size: number;
+    tumbleSpeed: number[];
+    px: number;
+    py: number;
+    pz: number;
+    beingSucked: boolean;
+    suckProgress: number;
+    suckStartPos: THREE.Vector3;
+    shapeIndex: number; // Which of the 4 shapes
+    instanceIndex: number; // Index within that shape's instanced mesh
+  }>>([]);
+
+  // Count pieces per shape for instanced mesh sizing
+  const piecesPerShape = useMemo(() => {
+    const counts = [0, 0, 0, 0];
+    for (let i = 0; i < puzzleCount; i++) {
+      counts[i % 4]++;
+    }
+    return counts;
+  }, []);
+
+  // Initialize orbits
+  if (puzzleOrbits.current.length === 0) {
+    const instanceCounters = [0, 0, 0, 0];
+    for (let i = 0; i < puzzleCount; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 2.5 + Math.random() * 2.0;
+      const shapeIndex = i % 4; // Distribute evenly among 4 shapes
+      puzzleOrbits.current.push({
+        dist,
+        angle,
+        tilt: (Math.random() - 0.5) * 0.8,
+        speed: 0.2 + Math.random() * 0.3,
+        yOff: (Math.random() - 0.5) * 1.0,
+        size: 0.35 + Math.random() * 0.2,
+        tumbleSpeed: [
+          (Math.random() - 0.5) * 2,
+          (Math.random() - 0.5) * 2.5,
+          (Math.random() - 0.5) * 1.5,
+        ],
+        px: Math.cos(angle) * dist,
+        py: (Math.random() - 0.5) * 1.0,
+        pz: Math.sin(angle) * dist,
+        beingSucked: false,
+        suckProgress: 0,
+        suckStartPos: new THREE.Vector3(),
+        shapeIndex,
+        instanceIndex: instanceCounters[shapeIndex]++,
+      });
+    }
+  }
+
+  // Create 4 different puzzle piece shapes
+  const puzzleGeos = useMemo(() => {
+    const s = 0.5; // half-size of main square
+    const nubR = 0.28; // nub radius - bigger!
+    const nubD = 0.25; // how far nub sticks out - bigger!
+
+    const extrudeSettings = {
+      depth: 0.1,
+      bevelEnabled: true,
+      bevelThickness: 0.02,
+      bevelSize: 0.02,
+      bevelSegments: 2,
+    };
+
+    // Helper to create nub (outward bump)
+    const addNub = (shape: THREE.Shape, x1: number, y1: number, x2: number, y2: number, outX: number, outY: number) => {
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      shape.lineTo(x1, y1);
+      shape.bezierCurveTo(x1 + outX, y1 + outY, x2 + outX, y2 + outY, x2, y2);
+    };
+
+    // Helper to create hole (inward indent)
+    const addHole = (shape: THREE.Shape, x1: number, y1: number, x2: number, y2: number, inX: number, inY: number) => {
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      shape.lineTo(x1, y1);
+      shape.bezierCurveTo(x1 - inX * 0.8, y1 - inY * 0.8, x2 - inX * 0.8, y2 - inY * 0.8, x2, y2);
+    };
+
+    const geos: THREE.ExtrudeGeometry[] = [];
+
+    // Shape 0: nub right & bottom, hole left & top
+    const shape0 = new THREE.Shape();
+    shape0.moveTo(-s, -s);
+    addNub(shape0, -nubR, -s, nubR, -s, 0, -nubD); // bottom nub
+    shape0.lineTo(s, -s);
+    addNub(shape0, s, -nubR, s, nubR, nubD, 0); // right nub
+    shape0.lineTo(s, s);
+    addHole(shape0, nubR, s, -nubR, s, 0, nubD); // top hole
+    shape0.lineTo(-s, s);
+    addHole(shape0, -s, nubR, -s, -nubR, -nubD, 0); // left hole
+    shape0.lineTo(-s, -s);
+    const geo0 = new THREE.ExtrudeGeometry(shape0, extrudeSettings);
+    geo0.center();
+    geos.push(geo0);
+
+    // Shape 1: nub top & left, hole right & bottom
+    const shape1 = new THREE.Shape();
+    shape1.moveTo(-s, -s);
+    addHole(shape1, -nubR, -s, nubR, -s, 0, -nubD); // bottom hole
+    shape1.lineTo(s, -s);
+    addHole(shape1, s, -nubR, s, nubR, nubD, 0); // right hole
+    shape1.lineTo(s, s);
+    addNub(shape1, nubR, s, -nubR, s, 0, nubD); // top nub
+    shape1.lineTo(-s, s);
+    addNub(shape1, -s, nubR, -s, -nubR, -nubD, 0); // left nub
+    shape1.lineTo(-s, -s);
+    const geo1 = new THREE.ExtrudeGeometry(shape1, extrudeSettings);
+    geo1.center();
+    geos.push(geo1);
+
+    // Shape 2: nubs on all sides (corner piece)
+    const shape2 = new THREE.Shape();
+    shape2.moveTo(-s, -s);
+    addNub(shape2, -nubR, -s, nubR, -s, 0, -nubD);
+    shape2.lineTo(s, -s);
+    addNub(shape2, s, -nubR, s, nubR, nubD, 0);
+    shape2.lineTo(s, s);
+    addNub(shape2, nubR, s, -nubR, s, 0, nubD);
+    shape2.lineTo(-s, s);
+    addNub(shape2, -s, nubR, -s, -nubR, -nubD, 0);
+    shape2.lineTo(-s, -s);
+    const geo2 = new THREE.ExtrudeGeometry(shape2, extrudeSettings);
+    geo2.center();
+    geos.push(geo2);
+
+    // Shape 3: holes on all sides
+    const shape3 = new THREE.Shape();
+    shape3.moveTo(-s, -s);
+    addHole(shape3, -nubR, -s, nubR, -s, 0, -nubD);
+    shape3.lineTo(s, -s);
+    addHole(shape3, s, -nubR, s, nubR, nubD, 0);
+    shape3.lineTo(s, s);
+    addHole(shape3, nubR, s, -nubR, s, 0, nubD);
+    shape3.lineTo(-s, s);
+    addHole(shape3, -s, nubR, -s, -nubR, -nubD, 0);
+    shape3.lineTo(-s, -s);
+    const geo3 = new THREE.ExtrudeGeometry(shape3, extrudeSettings);
+    geo3.center();
+    geos.push(geo3);
+
+    return geos;
+  }, []);
+
+  // Assign random shape to each piece
+  const puzzleShapeIndices = useMemo(() => {
+    return Array.from({ length: puzzleCount }, () => Math.floor(Math.random() * 4));
+  }, []);
+
+
+  // Glowing material for puzzle pieces - emissive + lit by point light
+  const puzzleGlowMaterial = useMemo(() => {
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color("#fff0c0"),
+      emissive: new THREE.Color("#ffcc44"),
+      emissiveIntensity: 3,
+      metalness: 0.1,
+      roughness: 0.3,
+      toneMapped: false,
+    });
   }, []);
 
   useFrame(({ clock }) => {
@@ -1224,148 +1581,244 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
 
     // Gentle bobbing
     if (groupRef.current) {
-      groupRef.current.position.y = Math.sin(t * 0.6 + 5.5) * 0.2;
-      groupRef.current.rotation.z = Math.sin(t * 0.4 + 1.2) * 0.03;
-      groupRef.current.rotation.x = Math.sin(t * 0.3 + 3.0) * 0.02;
+      groupRef.current.position.y = Math.sin(t * 0.5 + 5.5) * 0.15;
+      groupRef.current.rotation.z = Math.sin(t * 0.35 + 1.2) * 0.025;
+      groupRef.current.rotation.x = Math.sin(t * 0.25 + 3.0) * 0.015;
     }
 
-    // Open/close on hover
+    // Smooth open/close
     const target = hovered ? 1 : 0;
-    openAmount.current += (target - openAmount.current) * 0.08;
+    openAmount.current += (target - openAmount.current) * 0.1;
+
     if (coverRef.current) {
-      coverRef.current.rotation.y = -openAmount.current * Math.PI * 0.4;
+      coverRef.current.rotation.y = -openAmount.current * Math.PI * 0.5;
+    }
+
+    // Update material uniforms
+    if (coverMaterial.uniforms) coverMaterial.uniforms.uTime.value = t;
+    if (spineMaterial.uniforms) spineMaterial.uniforms.uTime.value = t;
+    if (pagesMaterial.uniforms) {
+      pagesMaterial.uniforms.uTime.value = t;
+      pagesMaterial.uniforms.uOpenAmount.value = openAmount.current;
+    }
+
+    // Update orbiting puzzle pieces - absorption when passing in front of open page
+    if (openAmount.current > 0.1) {
+      const pageTarget = new THREE.Vector3(0.15, 0, 0.15);
+      const suckSpeed = 0.006;
+
+      for (let i = 0; i < puzzleCount; i++) {
+        const orb = puzzleOrbits.current[i];
+        const meshRef = puzzleMeshRefs[orb.shapeIndex];
+        if (!meshRef.current) continue;
+
+        const a = t * orb.speed + orb.angle;
+        const normalizedAngle = ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+
+        const orbitX = Math.cos(a) * orb.dist;
+        const orbitY = orb.yOff + Math.sin(a * 0.6 + orb.tilt) * 0.3;
+        const orbitZ = Math.sin(a) * orb.dist;
+
+        if (!orb.beingSucked) {
+          orb.px = orbitX;
+          orb.py = orbitY;
+          orb.pz = orbitZ;
+
+          const inFrontArc = normalizedAngle > Math.PI * 0.25 && normalizedAngle < Math.PI * 0.75;
+          if (inFrontArc) {
+            orb.beingSucked = true;
+            orb.suckProgress = 0;
+            orb.suckStartPos.set(orb.px, orb.py, orb.pz);
+          }
+        }
+
+        let scale = orb.size * openAmount.current;
+
+        if (orb.beingSucked) {
+          orb.suckProgress += suckSpeed * (1 + orb.suckProgress * 0.5);
+          const progress = Math.min(1, orb.suckProgress);
+          const easeIn = progress * progress;
+
+          const spiralAngle = progress * Math.PI * 2;
+          const spiralRadius = (1 - easeIn) * 0.4;
+
+          orb.px = orb.suckStartPos.x + (pageTarget.x - orb.suckStartPos.x) * easeIn + Math.cos(spiralAngle) * spiralRadius;
+          orb.py = orb.suckStartPos.y + (pageTarget.y - orb.suckStartPos.y) * easeIn + Math.sin(spiralAngle) * spiralRadius;
+          orb.pz = orb.suckStartPos.z + (pageTarget.z - orb.suckStartPos.z) * easeIn;
+
+          scale = orb.size * openAmount.current * (1 - easeIn);
+
+          if (orb.suckProgress >= 1) {
+            orb.beingSucked = false;
+            orb.suckProgress = 0;
+            orb.angle = Math.PI + (Math.random() - 0.5) * Math.PI * 0.8;
+            orb.dist = 2.2 + Math.random() * 2.0;
+            orb.tilt = (Math.random() - 0.5) * 0.8;
+            orb.yOff = (Math.random() - 0.5) * 1.0;
+            orb.speed = 0.2 + Math.random() * 0.3;
+            orb.px = Math.cos(orb.angle) * orb.dist;
+            orb.py = orb.yOff;
+            orb.pz = Math.sin(orb.angle) * orb.dist;
+            scale = 0.02;
+          }
+        }
+
+        puzzleDummy.position.set(orb.px, orb.py, orb.pz);
+        const tumbleMult = orb.beingSucked ? 1.5 : 1;
+        puzzleDummy.rotation.set(
+          t * orb.tumbleSpeed[0] * tumbleMult,
+          t * orb.tumbleSpeed[1] * tumbleMult,
+          t * orb.tumbleSpeed[2] * tumbleMult
+        );
+        puzzleDummy.scale.setScalar(Math.max(0.01, scale));
+        puzzleDummy.updateMatrix();
+        meshRef.current.setMatrixAt(orb.instanceIndex, puzzleDummy.matrix);
+      }
+
+      // Update all mesh instance matrices
+      puzzleMeshRefs.forEach(ref => {
+        if (ref.current) ref.current.instanceMatrix.needsUpdate = true;
+      });
+    } else {
+      // Book closed - hide all pieces
+      puzzleMeshRefs.forEach((ref, shapeIdx) => {
+        if (!ref.current) return;
+        for (let j = 0; j < piecesPerShape[shapeIdx]; j++) {
+          puzzleDummy.scale.setScalar(0.01);
+          puzzleDummy.updateMatrix();
+          ref.current.setMatrixAt(j, puzzleDummy.matrix);
+        }
+        ref.current.instanceMatrix.needsUpdate = true;
+      });
     }
   });
 
+  const handlePointerOver = (e: THREE.Event) => {
+    e.stopPropagation();
+    if (!hovered) hoverStartTime.current = performance.now() / 1000;
+    setHovered(true);
+    document.body.style.cursor = "pointer";
+  };
+
+  const handlePointerOut = () => {
+    setHovered(false);
+    document.body.style.cursor = "default";
+  };
+
   return (
     <group ref={groupRef}>
-      {/* Soft warm glow — larger and brighter */}
-      <mesh>
-        <sphereGeometry args={[3.0, 24, 24]} />
-        <meshBasicMaterial
-          color={new THREE.Color(1.5, 1.0, 0.3)}
-          transparent
-          opacity={0.06}
-          side={THREE.BackSide}
-          toneMapped={false}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-        />
-      </mesh>
-      {/* Inner bright glow */}
-      <mesh>
-        <sphereGeometry args={[1.8, 24, 24]} />
-        <meshBasicMaterial
-          color={new THREE.Color(2.0, 1.5, 0.5)}
-          transparent
-          opacity={0.04}
-          side={THREE.BackSide}
-          toneMapped={false}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-        />
-      </mesh>
-
       <group
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect("blog");
-        }}
-        onPointerOver={(e) => {
-          e.stopPropagation();
-          setHovered(true);
-          document.body.style.cursor = "pointer";
-        }}
-        onPointerOut={() => {
-          setHovered(false);
-          document.body.style.cursor = "default";
-        }}
-        scale={hovered ? 1.08 : 1}
+        onClick={(e) => { e.stopPropagation(); onSelect("blog"); }}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+        scale={hovered ? 1.06 : 1}
         rotation={[0.1, 0.3, 0]}
       >
-        {/* Back cover */}
+        {/* Back cover - premium leather */}
         <mesh position={[0, 0, -bookD / 2]}>
-          <boxGeometry args={[bookW, bookH, coverThick]} />
-          <meshStandardMaterial color="#2a1830" roughness={0.4} metalness={0.2} emissive="#1a0a20" emissiveIntensity={0.3} />
+          <boxGeometry args={[bookW, bookH, coverThick, 8, 8, 1]} />
+          <primitive object={coverMaterial} attach="material" />
         </mesh>
 
-        {/* Spine */}
+        {/* Spine - premium leather */}
         <mesh position={[-bookW / 2, 0, 0]}>
-          <boxGeometry args={[coverThick, bookH, bookD]} />
-          <meshStandardMaterial color="#3a2040" roughness={0.35} metalness={0.25} emissive="#2a1030" emissiveIntensity={0.3} />
+          <boxGeometry args={[coverThick, bookH, bookD, 1, 8, 4]} />
+          <primitive object={spineMaterial} attach="material" />
         </mesh>
 
-        {/* Pages block — slightly glowing warm */}
-        <mesh position={[0, 0, 0]}>
-          <boxGeometry args={[bookW * 0.92, bookH * 0.94, bookD * 0.75]} />
-          <meshStandardMaterial color="#f0e4d0" roughness={0.8} metalness={0} emissive="#d4a72d" emissiveIntensity={0.08} />
+        {/* Pages block - aged paper with glow */}
+        <mesh ref={pagesRef} position={[0, 0, 0]}>
+          <boxGeometry args={[bookW * 0.9, bookH * 0.92, bookD * 0.7, 4, 4, 4]} />
+          <primitive object={pagesMaterial} attach="material" />
         </mesh>
+
+        {/* Point light inside book - creates real glow when open */}
+        <pointLight
+          position={[0.2, 0, 0.2]}
+          color="#ffe4a0"
+          intensity={hovered ? 8 : 0}
+          distance={4}
+          decay={2}
+        />
 
         {/* Front cover — pivots open */}
         <group ref={coverRef} position={[-bookW / 2, 0, bookD / 2]}>
           <mesh geometry={frontCoverGeo}>
+            <primitive object={coverMaterial} attach="material" />
+          </mesh>
+
+          {/* Gold foil title - ornate */}
+          <mesh position={[bookW / 2, bookH * 0.2, coverThick / 2 + 0.008]}>
+            <planeGeometry args={[bookW * 0.55, bookH * 0.08]} />
             <meshStandardMaterial
-              color="#3a1a40"
-              roughness={0.4}
-              metalness={0.25}
-              emissive="#2a1035"
-              emissiveIntensity={0.35}
+              color="#d4a72d"
+              emissive="#b8941f"
+              emissiveIntensity={0.6}
+              metalness={0.9}
+              roughness={0.2}
+              toneMapped={false}
             />
           </mesh>
-          {/* Gold title embossing on front cover — brighter */}
-          <mesh position={[bookW / 2, bookH * 0.15, coverThick / 2 + 0.005]}>
-            <planeGeometry args={[bookW * 0.5, bookH * 0.06]} />
-            <meshBasicMaterial
-              color={new THREE.Color(3.0, 2.2, 0.6)}
+          <mesh position={[bookW / 2, bookH * 0.05, coverThick / 2 + 0.008]}>
+            <planeGeometry args={[bookW * 0.4, bookH * 0.05]} />
+            <meshStandardMaterial
+              color="#c9962a"
+              emissive="#a87d1a"
+              emissiveIntensity={0.5}
+              metalness={0.85}
+              roughness={0.25}
               toneMapped={false}
-              transparent
-              opacity={0.8}
             />
           </mesh>
-          <mesh position={[bookW / 2, -bookH * 0.05, coverThick / 2 + 0.005]}>
-            <planeGeometry args={[bookW * 0.35, bookH * 0.04]} />
-            <meshBasicMaterial
-              color={new THREE.Color(2.5, 1.8, 0.5)}
-              toneMapped={false}
-              transparent
-              opacity={0.6}
-            />
+          {/* Decorative corner accents */}
+          <mesh position={[bookW * 0.15, bookH * 0.4, coverThick / 2 + 0.006]}>
+            <circleGeometry args={[0.08, 16]} />
+            <meshStandardMaterial color="#d4a72d" emissive="#b8941f" emissiveIntensity={0.5} metalness={0.9} roughness={0.2} />
+          </mesh>
+          <mesh position={[bookW * 0.85, bookH * 0.4, coverThick / 2 + 0.006]}>
+            <circleGeometry args={[0.08, 16]} />
+            <meshStandardMaterial color="#d4a72d" emissive="#b8941f" emissiveIntensity={0.5} metalness={0.9} roughness={0.2} />
+          </mesh>
+          <mesh position={[bookW * 0.15, -bookH * 0.4, coverThick / 2 + 0.006]}>
+            <circleGeometry args={[0.08, 16]} />
+            <meshStandardMaterial color="#d4a72d" emissive="#b8941f" emissiveIntensity={0.5} metalness={0.9} roughness={0.2} />
+          </mesh>
+          <mesh position={[bookW * 0.85, -bookH * 0.4, coverThick / 2 + 0.006]}>
+            <circleGeometry args={[0.08, 16]} />
+            <meshStandardMaterial color="#d4a72d" emissive="#b8941f" emissiveIntensity={0.5} metalness={0.9} roughness={0.2} />
           </mesh>
         </group>
       </group>
 
-      {/* Floating particles around book */}
-      <BookParticles />
+      {/* Orbiting 3D glowing puzzle pieces - 4 different shapes */}
+      {puzzleGeos.map((geo, idx) => (
+        <instancedMesh
+          key={idx}
+          ref={puzzleMeshRefs[idx]}
+          args={[geo, puzzleGlowMaterial, piecesPerShape[idx]]}
+          rotation={[0.1, 0.3, 0]}
+        />
+      ))}
 
       {/* Label */}
-      <Html
-        position={[0, -1.8, 0]}
-        center
-        style={{ pointerEvents: "none", whiteSpace: "nowrap" }}
-      >
+      <Html position={[0, -1.8, 0]} center style={{ pointerEvents: "none", whiteSpace: "nowrap" }}>
         <div style={{ textAlign: "center" }}>
-          <div
-            style={{
-              color: hovered
-                ? "rgba(255,255,255,0.95)"
-                : "rgba(232,236,241,0.8)",
-              fontSize: "14px",
-              fontWeight: 600,
-              fontFamily: "system-ui, -apple-system, sans-serif",
-              textShadow: "0 0 12px rgba(0,0,0,0.8)",
-              transition: "color 0.2s",
-            }}
-          >
+          <div style={{
+            color: hovered ? "rgba(255,255,255,0.95)" : "rgba(232,236,241,0.8)",
+            fontSize: "14px",
+            fontWeight: 600,
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            textShadow: "0 0 12px rgba(0,0,0,0.8)",
+            transition: "color 0.2s",
+          }}>
             コミュニティ
           </div>
-          <div
-            style={{
-              color: "rgba(232,236,241,0.35)",
-              fontSize: "10px",
-              fontFamily: "ui-monospace, monospace",
-              textShadow: "0 0 8px rgba(0,0,0,0.8)",
-            }}
-          >
+          <div style={{
+            color: "rgba(232,236,241,0.35)",
+            fontSize: "10px",
+            fontFamily: "ui-monospace, monospace",
+            textShadow: "0 0 8px rgba(0,0,0,0.8)",
+          }}>
             ブログ & 交流
           </div>
         </div>
@@ -1374,43 +1827,7 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
   );
 }
 
-function BookParticles() {
-  const count = 10;
-  const pointsRef = useRef<THREE.Points>(null);
-
-  const geo = useMemo(() => {
-    const g = new THREE.BufferGeometry();
-    const pos = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      const a = (i / count) * Math.PI * 2;
-      const r = 1.5 + Math.random() * 0.8;
-      pos[i * 3] = Math.cos(a) * r;
-      pos[i * 3 + 1] = (Math.random() - 0.5) * 1.4;
-      pos[i * 3 + 2] = Math.sin(a) * r;
-    }
-    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-    return g;
-  }, []);
-
-  useFrame(({ clock }) => {
-    if (pointsRef.current) {
-      pointsRef.current.rotation.y = clock.getElapsedTime() * 0.15;
-    }
-  });
-
-  return (
-    <points ref={pointsRef} geometry={geo}>
-      <pointsMaterial
-        size={0.08}
-        color={new THREE.Color(3.0, 2.2, 0.6)}
-        transparent
-        opacity={0.55}
-        sizeAttenuation
-        toneMapped={false}
-      />
-    </points>
-  );
-}
+// BookParticles removed - dust particles now integrated into FloatingBook
 
 // ─── Nova Spawn Effect ──────────────────────────────────
 
@@ -2343,8 +2760,8 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
       <ResponsiveFov baseFov={45} />
 
       {/* Dynamic background */}
-      <color attach="background" args={[isLight ? "#1a1a2e" : "#02060c"]} />
-      <fog attach="fog" args={[isLight ? "#1a1a2e" : "#02060c", isLight ? 50 : 40, 120]} />
+      <color attach="background" args={[isLight ? "#1a1a1a" : "#020202"]} />
+      <fog attach="fog" args={[isLight ? "#1a1a1a" : "#020202", isLight ? 50 : 40, 120]} />
 
       {/* Lighting — cinematic three-point setup */}
       <ambientLight intensity={isLight ? 0.5 : 0.12} color={isLight ? "#aabbdd" : "#8899bb"} />
@@ -2509,7 +2926,7 @@ export function UniverseCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100vh", background: theme === "light" ? "#1a1a2e" : "#02060c", transition: "background 0.7s ease" }}>
+    <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100vh", background: theme === "light" ? "#1a1a1a" : "#020202", transition: "background 0.7s ease" }}>
       <Canvas
         camera={{ position: [0, 12, 22], fov: 45 }}
         gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}

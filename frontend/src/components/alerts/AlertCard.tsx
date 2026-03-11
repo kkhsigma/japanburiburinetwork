@@ -44,7 +44,7 @@ export function AlertCard({ alert }: AlertCardProps) {
   return (
     <Link href={`/alerts/${alert.id}`}>
       <motion.div
-        className="relative rounded-lg border border-[#1e293b] bg-[#111827] p-4 cursor-pointer overflow-hidden"
+        className="relative rounded-lg border border-[#1e1e1e] bg-[#111111] p-4 cursor-pointer overflow-hidden"
         style={{ borderLeftWidth: "3px", borderLeftColor: severityColor }}
         whileHover={{
           y: -2,
@@ -82,7 +82,7 @@ export function AlertCard({ alert }: AlertCardProps) {
             </span>
 
             {/* Source tier */}
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono text-[#64748b] bg-[#1a2332]">
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono text-[#64748b] bg-[#1a1a1a]">
               {TIER_LABELS[alert.source_tier]}
             </span>
           </div>
@@ -92,7 +92,7 @@ export function AlertCard({ alert }: AlertCardProps) {
             {alert.compounds.slice(0, 3).map((compound) => (
               <span
                 key={compound}
-                className="px-1.5 py-0.5 bg-[#1a2332] text-[#94a3b8] text-[10px] rounded font-mono"
+                className="px-1.5 py-0.5 bg-[#1a1a1a] text-[#94a3b8] text-[10px] rounded font-mono"
               >
                 {compound}
               </span>

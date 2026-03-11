@@ -145,9 +145,9 @@ export function NotificationToast() {
                 exit={{ opacity: 0, y: -20, scale: 0.95 }}
                 transition={{ type: "spring", stiffness: 400, damping: 30 }}
                 className={`
-                  relative rounded-lg border-l-4 border border-[#1e293b]
+                  relative rounded-lg border-l-4 border border-[#1e1e1e]
                   ${config.borderColor} ${config.bgColor}
-                  bg-[#111827] backdrop-blur-xl shadow-2xl
+                  bg-[#111111] backdrop-blur-xl shadow-2xl
                   overflow-hidden
                 `}
               >
