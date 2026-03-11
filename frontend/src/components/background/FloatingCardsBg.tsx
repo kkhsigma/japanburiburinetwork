@@ -424,16 +424,31 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
     const exH = EXCLUSION_H / 2 + CARD_H / 2;
     const padX = CARD_W / 2 + 10;
     const padY = CARD_H / 2 + 10;
+    const maxY = h * 0.85;
+
+    // Build spawn zones: left, right, bottom-left, bottom-right of exclusion
+    // This guarantees molecules never spawn inside the hero text area
+    const zones: { x1: number; y1: number; x2: number; y2: number }[] = [
+      { x1: padX, y1: padY, x2: cx - exW, y2: maxY },              // left column
+      { x1: cx + exW, y1: padY, x2: w - padX, y2: maxY },          // right column
+      { x1: cx - exW, y1: cy + exH, x2: cx + exW, y2: maxY },      // below center
+      { x1: cx - exW, y1: padY, x2: cx + exW, y2: cy - exH },      // above center (small strip)
+    ].filter(z => z.x2 > z.x1 && z.y2 > z.y1); // remove invalid zones
+
+    // Weight zones by area so distribution is even
+    const areas = zones.map(z => (z.x2 - z.x1) * (z.y2 - z.y1));
+    const totalArea = areas.reduce((a, b) => a + b, 0);
 
     const cards: FloatingCard[] = mockCompounds.map((compound) => {
-      let x: number, y: number, attempts = 0;
-      // Distribute across 85% of height, avoiding substance bar at bottom
-      const maxInitY = h * 0.85;
-      do {
-        x = padX + Math.random() * (w - padX * 2);
-        y = padY + Math.random() * (maxInitY - padY);
-        attempts++;
-      } while (attempts < 50 && Math.abs(x - cx) < exW && Math.abs(y - cy) < exH);
+      // Pick a zone weighted by area
+      let r = Math.random() * totalArea;
+      let zone = zones[0];
+      for (let i = 0; i < zones.length; i++) {
+        r -= areas[i];
+        if (r <= 0) { zone = zones[i]; break; }
+      }
+      const x = zone.x1 + Math.random() * (zone.x2 - zone.x1);
+      const y = zone.y1 + Math.random() * (zone.y2 - zone.y1);
 
       return {
         id: compound.id, x, y,
@@ -729,19 +744,17 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         const maxY = Math.min(ch - padY, barTop - CARD_H / 2);
         if (card.y > maxY) { card.y = maxY; card.vy = -0.4; }
 
-        // Center exclusion zone — soft push outward, prefer horizontal escape
+        // Center exclusion zone — soft push outward, strongly prefer horizontal
         const relX = card.x - cx;
         const relY = card.y - cy;
         if (Math.abs(relX) < exW && Math.abs(relY) < exH) {
           const overlapX = exW - Math.abs(relX);
           const overlapY = exH - Math.abs(relY);
-          // Always prefer horizontal escape to avoid vertical stacking
-          if (overlapX < overlapY * 1.5) {
-            card.vx += Math.sign(relX || 1) * overlapX * 0.012;
-          } else {
-            // Vertical: always push downward unless already in bottom half
-            const pushDir = card.y > cy ? 1 : (card.y < padY + CARD_H ? 1 : -1);
-            card.vy += pushDir * overlapY * 0.01;
+          // Push horizontally (left/right) — this is always safe
+          card.vx += Math.sign(relX || (Math.random() > 0.5 ? 1 : -1)) * overlapX * 0.015;
+          // Only add vertical push if overlap is mostly vertical AND push downward
+          if (overlapY < overlapX * 0.5) {
+            card.vy += Math.abs(overlapY) * 0.008; // always push DOWN
           }
         }
 
