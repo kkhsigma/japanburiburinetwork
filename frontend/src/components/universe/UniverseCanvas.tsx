@@ -813,6 +813,60 @@ function PlanetNode({
           >
             {world.sublabel}
           </div>
+
+          {/* Hover preview card */}
+          <div
+            style={{
+              marginTop: "8px",
+              padding: "8px 12px",
+              borderRadius: "8px",
+              backgroundColor: "rgba(6,9,15,0.9)",
+              border: `1px solid ${world.glowColor}30`,
+              boxShadow: `0 4px 20px rgba(0,0,0,0.6), 0 0 15px ${world.glowColor}15`,
+              backdropFilter: "blur(8px)",
+              opacity: hovered ? 1 : 0,
+              transform: hovered ? "translateY(0) scale(1)" : "translateY(-4px) scale(0.95)",
+              transition: "all 0.3s ease",
+              pointerEvents: "none",
+              minWidth: "120px",
+            }}
+          >
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              marginBottom: "4px",
+            }}>
+              <span style={{
+                width: "6px", height: "6px", borderRadius: "50%",
+                backgroundColor: world.glowColor,
+                boxShadow: `0 0 6px ${world.glowColor}80`,
+              }} />
+              <span style={{
+                fontSize: "9px", fontFamily: "ui-monospace, monospace",
+                color: world.glowColor, letterSpacing: "0.05em",
+              }}>
+                {world.id === "cannabis" ? "12 物質" : world.id === "psychedelics" ? "8 物質" : "15 物質"}
+              </span>
+            </div>
+            <div style={{
+              display: "flex", alignItems: "center", gap: "4px",
+            }}>
+              <span style={{
+                fontSize: "8px", fontFamily: "ui-monospace, monospace",
+                color: "#ef4444", letterSpacing: "0.03em",
+              }}>
+                {world.id === "cannabis" ? "3 アラート" : world.id === "psychedelics" ? "2 アラート" : "5 アラート"}
+              </span>
+              <span style={{ fontSize: "7px", color: "rgba(255,255,255,0.15)" }}>|</span>
+              <span style={{
+                fontSize: "8px", fontFamily: "ui-monospace, monospace",
+                color: "rgba(255,255,255,0.3)",
+              }}>
+                クリックで詳細
+              </span>
+            </div>
+          </div>
         </div>
       </Html>
     </group>
@@ -1681,6 +1735,111 @@ function OrbitPath({ target, color }: { target: [number, number, number]; color:
   return <primitive ref={lineRef} object={new THREE.LineLoop(geo, mat)} />;
 }
 
+// ─── Shooting Stars ─────────────────────────────────────
+
+interface ShootingStar {
+  startX: number; startY: number; startZ: number;
+  dx: number; dy: number; dz: number;
+  speed: number; life: number; maxLife: number;
+  length: number;
+}
+
+function ShootingStars() {
+  const MAX_STARS = 3;
+  const starsRef = useRef<ShootingStar[]>([]);
+  const meshRef = useRef<THREE.Group>(null);
+  const linesRef = useRef<(THREE.Line | null)[]>([]);
+
+  // Pre-create line geometries
+  const geos = useMemo(() => {
+    return Array.from({ length: MAX_STARS }, () => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+      return geo;
+    });
+  }, []);
+
+  const mats = useMemo(() => {
+    return Array.from({ length: MAX_STARS }, () =>
+      new THREE.LineBasicMaterial({
+        color: new THREE.Color(0.8, 0.9, 1.0),
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      })
+    );
+  }, []);
+
+  useFrame((_, delta) => {
+    const stars = starsRef.current;
+
+    // Spawn new shooting star randomly
+    if (stars.length < MAX_STARS && Math.random() < 0.003) { // ~0.3% chance per frame
+      const angle = Math.random() * Math.PI * 2;
+      const elevation = Math.random() * 0.4 + 0.2;
+      const dist = 40 + Math.random() * 30;
+      stars.push({
+        startX: Math.cos(angle) * dist,
+        startY: elevation * dist * 0.5 + 5,
+        startZ: Math.sin(angle) * dist,
+        dx: -Math.cos(angle) * 0.6 + (Math.random() - 0.5) * 0.3,
+        dy: -0.3 - Math.random() * 0.2,
+        dz: -Math.sin(angle) * 0.6 + (Math.random() - 0.5) * 0.3,
+        speed: 15 + Math.random() * 20,
+        life: 0,
+        maxLife: 0.8 + Math.random() * 1.2,
+        length: 3 + Math.random() * 5,
+      });
+    }
+
+    // Update existing stars
+    for (let i = stars.length - 1; i >= 0; i--) {
+      const s = stars[i];
+      s.life += delta;
+      if (s.life > s.maxLife) {
+        stars.splice(i, 1);
+        if (mats[i]) mats[i].opacity = 0;
+        continue;
+      }
+
+      const t = s.life * s.speed;
+      const headX = s.startX + s.dx * t;
+      const headY = s.startY + s.dy * t;
+      const headZ = s.startZ + s.dz * t;
+      const tailT = Math.max(0, t - s.length);
+      const tailX = s.startX + s.dx * tailT;
+      const tailY = s.startY + s.dy * tailT;
+      const tailZ = s.startZ + s.dz * tailT;
+
+      if (geos[i]) {
+        const pos = geos[i].attributes.position.array as Float32Array;
+        pos[0] = tailX; pos[1] = tailY; pos[2] = tailZ;
+        pos[3] = headX; pos[4] = headY; pos[5] = headZ;
+        geos[i].attributes.position.needsUpdate = true;
+      }
+
+      // Fade in then out
+      const progress = s.life / s.maxLife;
+      const fadeIn = Math.min(progress * 5, 1);
+      const fadeOut = progress > 0.7 ? 1 - (progress - 0.7) / 0.3 : 1;
+      if (mats[i]) mats[i].opacity = fadeIn * fadeOut * 0.6;
+    }
+  });
+
+  return (
+    <group ref={meshRef}>
+      {geos.map((geo, i) => (
+        <primitive
+          key={i}
+          ref={(el: THREE.Line | null) => { linesRef.current[i] = el; }}
+          object={new THREE.Line(geo, mats[i])}
+        />
+      ))}
+    </group>
+  );
+}
+
 // ─── Ambient Nebula ─────────────────────────────────────
 
 function Nebula() {
@@ -1959,6 +2118,9 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
 
       {/* Ambient nebula clouds */}
       <Nebula />
+
+      {/* Shooting stars — occasional streaks */}
+      <ShootingStars />
 
       {/* Mark intro as seen once animation completes */}
       {!skipIntro && <IntroMarker />}
