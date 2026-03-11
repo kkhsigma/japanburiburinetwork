@@ -327,6 +327,8 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
   const mouseRef = useRef({ x: -1000, y: -1000 });
   const viewportH = useRef(0);
   const scrollY = useRef(0);
+  const scrollVelocity = useRef(0); // px/frame scroll speed for momentum bounce
+  const lastScrollY = useRef(0);
   const transitionRef = useRef<TransitionState>("idle");
   const lineFrameCount = useRef(0);
 
@@ -450,7 +452,10 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       mouseRef.current = { x: -1000, y: -1000 };
     };
     const onScroll = () => {
-      scrollY.current = window.scrollY || window.pageYOffset;
+      const newY = window.scrollY || window.pageYOffset;
+      scrollVelocity.current = newY - lastScrollY.current;
+      lastScrollY.current = newY;
+      scrollY.current = newY;
     };
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -533,15 +538,22 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         if (card.x > cw - padX) { card.x = cw - padX; card.vx *= -0.6; }
         if (card.y < padY) { card.y = padY; card.vy = Math.abs(card.vy) * 0.5; } // bounce off ceiling
 
-        // Substance bar collision — rubber ball bounce!
+        // Substance bar collision — momentum bounce powered by scroll speed!
         const cardBottom = card.y + CARD_H / 2;
         if (cardBottom > barTop) {
           card.y = barTop - CARD_H / 2;
-          const impactSpeed = Math.abs(card.vy);
-          // Bounce off bar — gentle reflection
-          card.vy = -Math.max(impactSpeed * 0.6, 0.3);
-          // Jelly squish on impact
-          const squishAmount = Math.min(0.5, impactSpeed * 1.0);
+          // Scroll velocity boost: faster scroll = harder bounce
+          const scrollSpeed = Math.abs(scrollVelocity.current);
+          const scrollBoost = Math.min(scrollSpeed * 0.15, 4); // cap at 4
+          const impactSpeed = Math.abs(card.vy) + scrollBoost;
+          // Bounce up — strong restitution with scroll momentum
+          card.vy = -Math.max(impactSpeed * 0.85, 0.5 + scrollBoost);
+          // Random horizontal scatter on hard hits
+          if (scrollBoost > 1) {
+            card.vx += (Math.random() - 0.5) * scrollBoost * 0.5;
+          }
+          // Jelly squish on impact — bigger squish for harder hits
+          const squishAmount = Math.min(0.6, impactSpeed * 0.8);
           card.squishX = 1 + squishAmount;
           card.squishY = 1 - squishAmount * 0.7;
         }
