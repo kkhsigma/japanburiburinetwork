@@ -296,8 +296,8 @@ interface FloatingCard {
 }
 
 // Sized for molecular structure display
-const CARD_W = 150;
-const CARD_H = 90;
+const CARD_W = 120;
+const CARD_H = 72;
 const EXCLUSION_W = 500;
 const EXCLUSION_H = 350;
 const BAR_HEIGHT = 70; // substance bar collision zone from bottom
@@ -316,6 +316,12 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
   const viewportH = useRef(0);
   const scrollY = useRef(0);
   const transitionRef = useRef<TransitionState>("idle");
+  const lineFrameCount = useRef(0);
+
+  // Pre-built lookup for O(1) compound data access in physics loop
+  const compLookup = useRef(new Map(
+    mockCompounds.map((c) => [c.id, { family: c.chemical_family ?? "Other", hex: riskHex[c.risk_level] || riskHex.medium, risk: c.risk_level }])
+  )).current;
   const filterRef = useRef<{ mode: FilterMode; value: FilterValue | null }>({ mode: "none", value: null });
   const [mounted, setMounted] = useState(false);
   const [filterMode, setFilterMode] = useState<FilterMode>("none");
@@ -474,7 +480,8 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         return;
       }
 
-      if (now - lastUpdate < 50) {
+      // Throttle physics to ~30fps for performance
+      if (now - lastUpdate < 33) {
         animRef.current = requestAnimationFrame(tick);
         return;
       }
@@ -569,48 +576,51 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         }
       }
 
-      // Draw connection lines between same-family compounds
-      const cvs = linesCanvasRef.current;
-      if (cvs) {
-        const ctx = cvs.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(0, 0, cw, ch);
-          const CONNECTION_DIST = 250;
-          for (let i = 0; i < cards.length; i++) {
-            for (let j = i + 1; j < cards.length; j++) {
-              const a = cards[i], b = cards[j];
-              const compA = mockCompounds.find((c) => c.id === a.id);
-              const compB = mockCompounds.find((c) => c.id === b.id);
-              if (!compA || !compB) continue;
-              if ((compA.chemical_family ?? "Other") !== (compB.chemical_family ?? "Other")) continue;
-              const dx = a.x - b.x, dy = a.y - b.y;
-              const dist = Math.sqrt(dx * dx + dy * dy);
-              if (dist < CONNECTION_DIST && dist > 0) {
-                const alpha = (1 - dist / CONNECTION_DIST) * 0.12;
-                const hex = riskHex[compA.risk_level] || riskHex.medium;
-                ctx.strokeStyle = hex;
-                ctx.globalAlpha = alpha;
-                ctx.lineWidth = 0.8;
-                ctx.beginPath();
-                ctx.moveTo(a.x, a.y);
-                ctx.lineTo(b.x, b.y);
-                ctx.stroke();
+      // Draw connection lines between same-family compounds (throttled — every 3rd frame)
+      if (lineFrameCount.current++ % 3 === 0) {
+        const cvs = linesCanvasRef.current;
+        if (cvs) {
+          const ctx = cvs.getContext("2d");
+          if (ctx) {
+            ctx.clearRect(0, 0, cw, ch);
+            const CONNECTION_DIST = 220;
+            for (let i = 0; i < cards.length; i++) {
+              const a = cards[i];
+              const famA = compLookup.get(a.id);
+              if (!famA) continue;
+              for (let j = i + 1; j < cards.length; j++) {
+                const b = cards[j];
+                const famB = compLookup.get(b.id);
+                if (!famB || famA.family !== famB.family) continue;
+                const dx = a.x - b.x, dy = a.y - b.y;
+                const distSq = dx * dx + dy * dy;
+                if (distSq < CONNECTION_DIST * CONNECTION_DIST && distSq > 0) {
+                  const dist = Math.sqrt(distSq);
+                  const alpha = (1 - dist / CONNECTION_DIST) * 0.1;
+                  ctx.strokeStyle = famA.hex;
+                  ctx.globalAlpha = alpha;
+                  ctx.lineWidth = 0.7;
+                  ctx.beginPath();
+                  ctx.moveTo(a.x, a.y);
+                  ctx.lineTo(b.x, b.y);
+                  ctx.stroke();
+                }
               }
             }
+            ctx.globalAlpha = 1;
           }
-          ctx.globalAlpha = 1;
         }
       }
 
       const f = filterRef.current;
-      for (const card of cards) {
-        if (f.mode === "none" || !f.value) {
-          updateCardDOM(card, 0.5, 1);
-        } else {
-          const compound = mockCompounds.find((c) => c.id === card.id)!;
+      if (f.mode === "none" || !f.value) {
+        for (const card of cards) updateCardDOM(card, 0.5, 1);
+      } else {
+        for (const card of cards) {
+          const data = compLookup.get(card.id);
           const isMatch = f.mode === "risk"
-            ? compound.risk_level === f.value
-            : (compound.chemical_family ?? "Other") === f.value;
+            ? data?.risk === f.value
+            : data?.family === f.value;
           updateCardDOM(card, isMatch ? 0.9 : 0.06, isMatch ? 1.08 : 0.75);
         }
       }
@@ -679,47 +689,41 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       </div>
     )}
 
-    {/* Hover tooltip */}
+    {/* Hover tooltip — compact */}
     {hoveredCompound && !isTransitioning && (
       <div
-        className="fixed z-[60] pointer-events-none transition-opacity duration-150"
+        className="fixed z-[60] pointer-events-none"
         style={{
-          left: Math.min(tooltipPos.current.x + 16, (sizeRef.current.w || 900) - 230),
-          top: Math.max(tooltipPos.current.y - 20, 10),
+          left: Math.min(tooltipPos.current.x + 12, (sizeRef.current.w || 900) - 170),
+          top: Math.max(tooltipPos.current.y - 16, 10),
         }}
       >
         <div
-          className="rounded-lg px-3 py-2.5 backdrop-blur-md border max-w-[200px]"
+          className="rounded-md px-2 py-1.5 border max-w-[155px]"
           style={{
-            backgroundColor: "rgba(6,9,15,0.92)",
-            borderColor: `${riskHex[hoveredCompound.risk_level]}30`,
-            boxShadow: `0 4px 20px rgba(0,0,0,0.5), 0 0 15px ${riskHex[hoveredCompound.risk_level]}15`,
+            backgroundColor: "rgba(6,9,15,0.94)",
+            borderColor: `${riskHex[hoveredCompound.risk_level]}25`,
+            boxShadow: `0 2px 10px rgba(0,0,0,0.5)`,
           }}
         >
-          <div className="flex items-center gap-1.5 mb-1">
+          <div className="flex items-center gap-1 mb-0.5">
             <span
-              className="w-2 h-2 rounded-full"
-              style={{
-                backgroundColor: riskHex[hoveredCompound.risk_level],
-                boxShadow: `0 0 6px ${riskHex[hoveredCompound.risk_level]}80`,
-              }}
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ backgroundColor: riskHex[hoveredCompound.risk_level] }}
             />
-            <span className="text-[12px] font-bold text-white/90">{hoveredCompound.name}</span>
+            <span className="text-[10px] font-bold text-white/85">{hoveredCompound.name}</span>
           </div>
-          {hoveredCompound.aliases.length > 0 && (
-            <p className="text-[9px] text-white/30 mb-1 truncate">{hoveredCompound.aliases[0]}</p>
-          )}
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[9px] font-mono" style={{ color: `${riskHex[hoveredCompound.risk_level]}cc` }}>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[8px] font-mono" style={{ color: `${riskHex[hoveredCompound.risk_level]}bb` }}>
               {riskLabels[hoveredCompound.risk_level]}
             </span>
-            <span className="text-[8px] text-white/25">|</span>
-            <span className="text-[9px] text-white/40">{statusLabels[hoveredCompound.legal_status_japan]}</span>
+            <span className="text-[7px] text-white/20">|</span>
+            <span className="text-[8px] text-white/35">{statusLabels[hoveredCompound.legal_status_japan]}</span>
           </div>
           {formulaMap[hoveredCompound.id] && (
-            <p className="text-[9px] font-mono text-white/25">{formulaMap[hoveredCompound.id]}</p>
+            <p className="text-[8px] font-mono text-white/20 mt-0.5">{formulaMap[hoveredCompound.id]}</p>
           )}
-          <p className="text-[9px] text-white/35 mt-1 leading-relaxed line-clamp-2">{hoveredCompound.effects_summary}</p>
+          <p className="text-[8px] text-white/30 mt-0.5 leading-snug line-clamp-1">{hoveredCompound.effects_summary}</p>
         </div>
       </div>
     )}
@@ -888,7 +892,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
 
               {/* SVG molecular skeleton — the main visual */}
               <div className="relative flex justify-center">
-                <MolecularSVG structure={structure} hex={hex} size={CARD_W - 20} />
+                <MolecularSVG structure={structure} hex={hex} size={CARD_W - 16} />
               </div>
 
               {/* Name label — floats below the structure */}
@@ -900,12 +904,12 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
                     boxShadow: `0 0 8px ${hex}aa`,
                   }}
                 />
-                <span className="text-[10px] font-bold text-white/90 tracking-tight" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}>
+                <span className="text-[8px] font-bold text-white/90 tracking-tight" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.7)" }}>
                   {compound.name}
                 </span>
                 <span
-                  className="text-[7px] font-mono font-bold tracking-wider px-1 py-0.5 rounded-sm"
-                  style={{ color: hex, backgroundColor: `${hex}28`, textShadow: `0 0 6px ${hex}40` }}
+                  className="text-[6px] font-mono font-bold tracking-wider px-0.5 py-px rounded-sm"
+                  style={{ color: hex, backgroundColor: `${hex}28`, textShadow: `0 0 4px ${hex}40` }}
                 >
                   {riskLabels[compound.risk_level]}
                 </span>
@@ -914,11 +918,11 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
               {/* Formula + status — tiny text below */}
               <div className="flex items-center justify-center gap-2 mt-0.5">
                 {formula && (
-                  <span className="text-[8px] font-mono font-medium" style={{ color: `${hex}bb`, textShadow: `0 0 8px ${hex}30` }}>
+                  <span className="text-[7px] font-mono font-medium" style={{ color: `${hex}bb`, textShadow: `0 0 6px ${hex}30` }}>
                     {formula}
                   </span>
                 )}
-                <span className="text-[7px] font-mono text-white/35" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}>
+                <span className="text-[6px] font-mono text-white/30" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
                   {statusLabels[compound.legal_status_japan]}
                 </span>
               </div>

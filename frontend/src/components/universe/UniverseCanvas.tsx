@@ -47,7 +47,7 @@ function fbm3d(x: number, y: number, z: number, octaves: number): number {
 // ─── Equirectangular Planet Texture ─────────────────────
 
 function generatePlanetMap(worldId: string): HTMLCanvasElement {
-  const W = 1024, H = 512;
+  const W = 768, H = 384;
   const cvs = document.createElement("canvas");
   cvs.width = W;
   cvs.height = H;
@@ -761,7 +761,7 @@ function PlanetNode({
         }}
         scale={hovered ? 1.1 : 1}
       >
-        <sphereGeometry args={[world.radius, 128, 64]} />
+        <sphereGeometry args={[world.radius, 96, 48]} />
         <meshStandardMaterial
           map={texture}
           roughness={0.45}

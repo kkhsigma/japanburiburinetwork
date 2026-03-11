@@ -33,7 +33,7 @@ interface SignalNode {
   opacity: number;
 }
 
-const PARTICLE_COUNT = 120;
+const PARTICLE_COUNT = 70;
 const SIGNAL_NODE_COUNT = 4;
 const CONNECTION_DISTANCE = 120;
 const CURSOR_RADIUS = 150;
@@ -287,22 +287,25 @@ export function ParticleField({ className, transitionState = "idle" }: ParticleF
 
       // Draw connection lines between nearby particles
       if (connectionFade > 0.01) {
+        const cdSq = CONNECTION_DISTANCE * CONNECTION_DISTANCE;
+        ctx.lineWidth = 0.5;
         for (let i = 0; i < particles.length; i++) {
+          const a = particles[i];
+          if (a.opacity < 0.01) continue;
           for (let j = i + 1; j < particles.length; j++) {
-            const a = particles[i];
             const b = particles[j];
-            if (a.opacity < 0.01 || b.opacity < 0.01) continue;
+            if (b.opacity < 0.01) continue;
             const dx = a.x - b.x;
             const dy = a.y - b.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < CONNECTION_DISTANCE) {
+            const distSq = dx * dx + dy * dy;
+            if (distSq < cdSq) {
+              const dist = Math.sqrt(distSq);
               const opacity =
                 (0.05 + 0.1 * (1 - dist / CONNECTION_DISTANCE)) * connectionFade;
               ctx.beginPath();
               ctx.moveTo(a.x, a.y);
               ctx.lineTo(b.x, b.y);
               ctx.strokeStyle = `rgba(26, 154, 138, ${opacity})`;
-              ctx.lineWidth = 0.5;
               ctx.stroke();
             }
           }
