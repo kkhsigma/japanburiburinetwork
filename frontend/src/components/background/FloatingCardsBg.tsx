@@ -305,6 +305,14 @@ interface Spark {
   hex: string;
 }
 
+interface Shockwave {
+  x: number; y: number;
+  radius: number;
+  maxRadius: number;
+  life: number; // 0→1
+  hex: string;
+}
+
 interface FloatingCard {
   id: string;
   x: number;
@@ -319,6 +327,12 @@ interface FloatingCard {
 
 const TRAIL_LENGTH = 8;
 const MAX_SPARKS = 60;
+const MAX_SHOCKWAVES = 10;
+
+// ── Shake detection constants ──
+const SHAKE_THRESHOLD = 25; // acceleration magnitude to trigger shake
+const SHAKE_COOLDOWN = 800; // ms between shakes
+const SCATTER_FORCE = 8; // explosion velocity magnitude
 
 // Sized for molecular structure display
 const CARD_W = 135;
@@ -357,8 +371,17 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
   const transitionRef = useRef<TransitionState>("idle");
   const lineFrameCount = useRef(0);
   const sparksRef = useRef<Spark[]>([]);
+  const shockwavesRef = useRef<Shockwave[]>([]);
   const hoveredIdRef = useRef<string | null>(null);
   const globalTime = useRef(0); // monotonic time for constellation dot animation
+
+  // ── Feature: Magnetic cursor state ──
+  const prevMouseRef = useRef({ x: -1000, y: -1000 });
+  const mouseSpeedRef = useRef(0);
+
+  // ── Feature: Shake to scatter (mobile) ──
+  const lastShakeRef = useRef(0);
+  const shakeFlashRef = useRef(0); // 0→1 flash animation progress
 
   // Pre-built lookup for O(1) compound data access in physics loop
   const compLookup = useRef(new Map(
@@ -482,13 +505,20 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
     };
     window.addEventListener("resize", onResize);
 
-    // Mouse tracking for repulsion
+    // Mouse tracking for magnetic cursor (speed-aware attract/repel)
     const onMouseMove = (e: MouseEvent) => {
       const r = container.getBoundingClientRect();
-      mouseRef.current = { x: e.clientX - r.left, y: e.clientY - r.top };
+      const newX = e.clientX - r.left;
+      const newY = e.clientY - r.top;
+      const dx = newX - prevMouseRef.current.x;
+      const dy = newY - prevMouseRef.current.y;
+      mouseSpeedRef.current = Math.sqrt(dx * dx + dy * dy);
+      prevMouseRef.current = { x: newX, y: newY };
+      mouseRef.current = { x: newX, y: newY };
     };
     const onMouseLeave = () => {
       mouseRef.current = { x: -1000, y: -1000 };
+      mouseSpeedRef.current = 0;
     };
     const onScroll = () => {
       const newY = window.scrollY || window.pageYOffset;
@@ -496,6 +526,46 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       lastScrollY.current = newY;
       scrollY.current = newY;
     };
+
+    // ── Shake to scatter (mobile gyroscope) ──
+    const onDeviceMotion = (e: DeviceMotionEvent) => {
+      const acc = e.accelerationIncludingGravity;
+      if (!acc || acc.x == null || acc.y == null || acc.z == null) return;
+      const magnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+      const now = Date.now();
+      if (magnitude > SHAKE_THRESHOLD && now - lastShakeRef.current > SHAKE_COOLDOWN) {
+        lastShakeRef.current = now;
+        shakeFlashRef.current = 0.01; // trigger flash
+        const cards = cardsRef.current;
+        const cw = sizeRef.current.w;
+        const ch = sizeRef.current.h;
+        const centerX = cw / 2;
+        const centerY = ch / 2;
+        for (const card of cards) {
+          // Explode outward from center
+          const dx = card.x - centerX;
+          const dy = card.y - centerY;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const force = SCATTER_FORCE + Math.random() * 2;
+          card.vx = (dx / dist) * force + (Math.random() - 0.5) * 3;
+          card.vy = (dy / dist) * force + (Math.random() - 0.5) * 3;
+          // Jelly squish from the blast
+          card.squishX = 1.4 + Math.random() * 0.3;
+          card.squishY = 0.6 - Math.random() * 0.15;
+        }
+        // Spawn a big center shockwave
+        const shockwaves = shockwavesRef.current;
+        if (shockwaves.length < MAX_SHOCKWAVES) {
+          shockwaves.push({
+            x: centerX, y: centerY,
+            radius: 0, maxRadius: Math.max(cw, ch) * 0.7,
+            life: 0, hex: "#1a9a8a",
+          });
+        }
+      }
+    };
+    window.addEventListener("devicemotion", onDeviceMotion);
+
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("scroll", onScroll, { passive: true });
     container.addEventListener("mouseleave", onMouseLeave);
@@ -555,17 +625,31 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       const mx = mouseRef.current.x;
       const my = mouseRef.current.y;
 
+      // ── Feature 2: Magnetic cursor — slow = attract, fast = repel ──
+      const cursorSpeed = mouseSpeedRef.current;
+      // Decay cursor speed over frames for smooth transitions
+      mouseSpeedRef.current *= 0.85;
+
       for (const card of cards) {
-        // Mouse repulsion — gentle push, doesn't fight hover
         const dmx = card.x - mx;
         const dmy = card.y - my;
         const mouseDist = Math.sqrt(dmx * dmx + dmy * dmy);
-        const MOUSE_RADIUS = 100;
-        // Only repel if mouse is not directly on the card (allows hover)
-        if (mouseDist > 30 && mouseDist < MOUSE_RADIUS && mouseDist > 0) {
-          const force = (MOUSE_RADIUS - mouseDist) * 0.003;
-          card.vx += (dmx / mouseDist) * force;
-          card.vy += (dmy / mouseDist) * force;
+        const MOUSE_RADIUS = 160;
+        if (mouseDist > 20 && mouseDist < MOUSE_RADIUS && mouseDist > 0) {
+          const proximity = (MOUSE_RADIUS - mouseDist) / MOUSE_RADIUS; // 0→1
+          // Speed threshold: below 8px/frame = attract, above = repel
+          const speedFactor = cursorSpeed / 8; // <1 = slow, >1 = fast
+          if (speedFactor > 1) {
+            // REPEL — blast wave, stronger with speed
+            const repelForce = proximity * Math.min(speedFactor * 0.015, 0.06);
+            card.vx += (dmx / mouseDist) * repelForce;
+            card.vy += (dmy / mouseDist) * repelForce;
+          } else {
+            // ATTRACT — gentle gravitational pull
+            const attractForce = proximity * 0.004 * (1 - speedFactor * 0.5);
+            card.vx -= (dmx / mouseDist) * attractForce;
+            card.vy -= (dmy / mouseDist) * attractForce;
+          }
         }
 
         card.x += card.vx;
@@ -615,13 +699,17 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
 
         card.vx += (Math.random() - 0.5) * 0.012;
         card.vy += (Math.random() - 0.5) * 0.01;
-        // Speed cap — higher for vertical to allow bounce arcs
-        const absVx = Math.abs(card.vx);
-        const absVy = Math.abs(card.vy);
-        if (absVx > 0.25) card.vx = Math.sign(card.vx) * 0.25;
-        if (absVy > 2.0) card.vy = Math.sign(card.vy) * 2.0;
-        card.vx *= 0.995;
-        card.vy *= 0.993;
+        // Speed cap — higher for vertical to allow bounce arcs, much higher for shake scatter
+        const speed = Math.sqrt(card.vx * card.vx + card.vy * card.vy);
+        const maxSpeed = speed > 3 ? 12 : 2; // allow high speed from shake/fling but cap drift
+        if (speed > maxSpeed) {
+          card.vx = (card.vx / speed) * maxSpeed;
+          card.vy = (card.vy / speed) * maxSpeed;
+        }
+        // Stronger damping at high speed, gentle at low speed
+        const damping = speed > 1.5 ? 0.975 : 0.995;
+        card.vx *= damping;
+        card.vy *= damping;
 
         // Jelly squish decay — spring back to normal
         card.squishX += (1 - card.squishX) * 0.15;
@@ -679,22 +767,37 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
               a.squishX = 1 + sq; a.squishY = 1 - sq * 0.6;
               b.squishX = 1 + sq; b.squishY = 1 - sq * 0.6;
 
-              // Spawn sparks at collision midpoint
-              if (impactForce > 0.15 && sparks.length < MAX_SPARKS) {
+              // Spawn sparks + shockwave ring at collision midpoint
+              if (impactForce > 0.12 && sparks.length < MAX_SPARKS) {
                 const midX = (a.x + b.x) / 2;
                 const midY = (a.y + b.y) / 2;
                 const hexA = compLookup.get(a.id)?.hex || "#fff";
                 const hexB = compLookup.get(b.id)?.hex || "#fff";
-                const sparkCount = Math.min(6, Math.floor(impactForce * 8));
+                // More sparks for harder hits, with directional bias
+                const sparkCount = Math.min(10, Math.floor(impactForce * 12));
                 for (let s = 0; s < sparkCount; s++) {
                   const angle = Math.random() * Math.PI * 2;
-                  const speed = 0.5 + Math.random() * impactForce * 2;
+                  const speed = 0.8 + Math.random() * impactForce * 3;
                   sparks.push({
-                    x: midX, y: midY,
+                    x: midX + (Math.random() - 0.5) * 4,
+                    y: midY + (Math.random() - 0.5) * 4,
                     vx: Math.cos(angle) * speed,
                     vy: Math.sin(angle) * speed,
                     life: 0,
                     hex: s % 2 === 0 ? hexA : hexB,
+                  });
+                }
+                // Shockwave ring at collision point
+                const shockwaves = shockwavesRef.current;
+                if (impactForce > 0.25 && shockwaves.length < MAX_SHOCKWAVES) {
+                  // Mix both colors — use the brighter one
+                  const mixHex = impactForce > 0.5 ? "#ffffff" : hexA;
+                  shockwaves.push({
+                    x: midX, y: midY,
+                    radius: 0,
+                    maxRadius: 30 + impactForce * 60,
+                    life: 0,
+                    hex: mixHex,
                   });
                 }
               }
@@ -708,10 +811,25 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         const s = sparks[i];
         s.x += s.vx;
         s.y += s.vy;
-        s.vx *= 0.96;
-        s.vy *= 0.96;
-        s.life += 0.04;
+        s.vx *= 0.94;
+        s.vy *= 0.94;
+        s.life += 0.035;
         if (s.life >= 1) sparks.splice(i, 1);
+      }
+
+      // Update shockwaves
+      const shockwaves = shockwavesRef.current;
+      for (let i = shockwaves.length - 1; i >= 0; i--) {
+        const sw = shockwaves[i];
+        sw.life += 0.04;
+        sw.radius = sw.maxRadius * sw.life;
+        if (sw.life >= 1) shockwaves.splice(i, 1);
+      }
+
+      // Shake flash decay
+      if (shakeFlashRef.current > 0) {
+        shakeFlashRef.current += 0.06;
+        if (shakeFlashRef.current >= 1) shakeFlashRef.current = 0;
       }
 
       // ── Canvas drawing: trails + sparks + constellation lines ──
@@ -743,20 +861,62 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
               }
             }
 
-            // Feature 2: Draw sparks
+            // Feature 2: Draw sparks (enhanced)
             for (const s of sparks) {
               const alpha = 1 - s.life;
-              const radius = (1 - s.life) * 2.5;
-              ctx.globalAlpha = alpha * 0.9;
+              const radius = (1 - s.life) * 3;
+              // Core bright spark
+              ctx.globalAlpha = alpha * 0.95;
+              ctx.fillStyle = "#ffffff";
+              ctx.beginPath();
+              ctx.arc(s.x, s.y, radius * 0.4, 0, Math.PI * 2);
+              ctx.fill();
+              // Colored body
+              ctx.globalAlpha = alpha * 0.85;
               ctx.fillStyle = s.hex;
               ctx.beginPath();
               ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
               ctx.fill();
-              // Glow
-              ctx.globalAlpha = alpha * 0.3;
+              // Outer glow
+              ctx.globalAlpha = alpha * 0.25;
               ctx.beginPath();
-              ctx.arc(s.x, s.y, radius * 2.5, 0, Math.PI * 2);
+              ctx.arc(s.x, s.y, radius * 3, 0, Math.PI * 2);
               ctx.fill();
+            }
+
+            // Feature 3 (enhanced): Draw shockwave rings
+            for (const sw of shockwaves) {
+              const alpha = (1 - sw.life);
+              const lineW = Math.max(0.5, (1 - sw.life) * 3);
+              ctx.strokeStyle = sw.hex;
+              ctx.lineWidth = lineW;
+              // Outer ring
+              ctx.globalAlpha = alpha * 0.4;
+              ctx.beginPath();
+              ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+              ctx.stroke();
+              // Inner softer ring
+              ctx.globalAlpha = alpha * 0.15;
+              ctx.beginPath();
+              ctx.arc(sw.x, sw.y, sw.radius * 0.6, 0, Math.PI * 2);
+              ctx.stroke();
+              // Center flash (only early in life)
+              if (sw.life < 0.3) {
+                const flashAlpha = (0.3 - sw.life) / 0.3;
+                ctx.globalAlpha = flashAlpha * 0.3;
+                ctx.fillStyle = sw.hex;
+                ctx.beginPath();
+                ctx.arc(sw.x, sw.y, sw.radius * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+
+            // Shake flash overlay — white flash that fades
+            if (shakeFlashRef.current > 0 && shakeFlashRef.current < 1) {
+              const flashAlpha = (1 - shakeFlashRef.current) * 0.12;
+              ctx.globalAlpha = flashAlpha;
+              ctx.fillStyle = "#1a9a8a";
+              ctx.fillRect(0, 0, cw, ch);
             }
 
             // Feature 3: Hover pulse resonance glow (drawn as expanding rings)
@@ -864,6 +1024,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       window.removeEventListener("resize", onResize);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("devicemotion", onDeviceMotion);
       container.removeEventListener("mouseleave", onMouseLeave);
       cancelAnimationFrame(animRef.current);
     };
