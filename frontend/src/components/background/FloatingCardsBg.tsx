@@ -298,13 +298,6 @@ type FilterValue = RiskLevel | string;
 
 interface TrailPoint { x: number; y: number }
 
-interface Spark {
-  x: number; y: number;
-  vx: number; vy: number;
-  life: number; // 0→1, dies at 1
-  hex: string;
-}
-
 interface Shockwave {
   x: number; y: number;
   radius: number;
@@ -326,7 +319,6 @@ interface FloatingCard {
 }
 
 const TRAIL_LENGTH = 8;
-const MAX_SPARKS = 60;
 const MAX_SHOCKWAVES = 10;
 
 
@@ -366,7 +358,6 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
   const lastScrollY = useRef(0);
   const transitionRef = useRef<TransitionState>("idle");
   const lineFrameCount = useRef(0);
-  const sparksRef = useRef<Spark[]>([]);
   const shockwavesRef = useRef<Shockwave[]>([]);
   const hoveredIdRef = useRef<string | null>(null);
   const globalTime = useRef(0); // monotonic time for constellation dot animation
@@ -803,8 +794,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         }
       }
 
-      // ── Feature 2: Elastic collision with sparks ──
-      const sparks = sparksRef.current;
+      // ── Elastic collision (physics only, no visual effects for performance) ──
       for (let i = 0; i < cards.length; i++) {
         for (let j = i + 1; j < cards.length; j++) {
           const a = cards[i], b = cards[j];
@@ -825,7 +815,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
             const dvx = a.vx - b.vx;
             const dvy = a.vy - b.vy;
             const dotN = dvx * nx + dvy * ny;
-            if (dotN > 0) { // only if approaching
+            if (dotN > 0) {
               a.vx -= dotN * nx * 0.9;
               a.vy -= dotN * ny * 0.9;
               b.vx += dotN * nx * 0.9;
@@ -836,58 +826,12 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
               const sq = Math.min(0.4, impactForce * 1.5);
               a.squishX = 1 + sq; a.squishY = 1 - sq * 0.6;
               b.squishX = 1 + sq; b.squishY = 1 - sq * 0.6;
-
-              // Spawn sparks + shockwave ring at collision midpoint
-              if (impactForce > 0.12 && sparks.length < MAX_SPARKS) {
-                const midX = (a.x + b.x) / 2;
-                const midY = (a.y + b.y) / 2;
-                const hexA = compLookup.get(a.id)?.hex || "#fff";
-                const hexB = compLookup.get(b.id)?.hex || "#fff";
-                // More sparks for harder hits, with directional bias
-                const sparkCount = Math.min(10, Math.floor(impactForce * 12));
-                for (let s = 0; s < sparkCount; s++) {
-                  const angle = Math.random() * Math.PI * 2;
-                  const speed = 0.8 + Math.random() * impactForce * 3;
-                  sparks.push({
-                    x: midX + (Math.random() - 0.5) * 4,
-                    y: midY + (Math.random() - 0.5) * 4,
-                    vx: Math.cos(angle) * speed,
-                    vy: Math.sin(angle) * speed,
-                    life: 0,
-                    hex: s % 2 === 0 ? hexA : hexB,
-                  });
-                }
-                // Shockwave ring at collision point
-                const shockwaves = shockwavesRef.current;
-                if (impactForce > 0.25 && shockwaves.length < MAX_SHOCKWAVES) {
-                  // Mix both colors — use the brighter one
-                  const mixHex = impactForce > 0.5 ? "#ffffff" : hexA;
-                  shockwaves.push({
-                    x: midX, y: midY,
-                    radius: 0,
-                    maxRadius: 30 + impactForce * 60,
-                    life: 0,
-                    hex: mixHex,
-                  });
-                }
-              }
             }
           }
         }
       }
 
-      // Update sparks
-      for (let i = sparks.length - 1; i >= 0; i--) {
-        const s = sparks[i];
-        s.x += s.vx;
-        s.y += s.vy;
-        s.vx *= 0.94;
-        s.vy *= 0.94;
-        s.life += 0.035;
-        if (s.life >= 1) sparks.splice(i, 1);
-      }
-
-      // Update shockwaves
+      // Update shockwaves (gravity well release only — rare, low cost)
       const shockwaves = shockwavesRef.current;
       for (let i = shockwaves.length - 1; i >= 0; i--) {
         const sw = shockwaves[i];
@@ -926,54 +870,15 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
               }
             }
 
-            // Feature 2: Draw sparks (enhanced)
-            for (const s of sparks) {
-              const alpha = 1 - s.life;
-              const radius = (1 - s.life) * 3;
-              // Core bright spark
-              ctx.globalAlpha = alpha * 0.95;
-              ctx.fillStyle = "#ffffff";
-              ctx.beginPath();
-              ctx.arc(s.x, s.y, radius * 0.4, 0, Math.PI * 2);
-              ctx.fill();
-              // Colored body
-              ctx.globalAlpha = alpha * 0.85;
-              ctx.fillStyle = s.hex;
-              ctx.beginPath();
-              ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
-              ctx.fill();
-              // Outer glow
-              ctx.globalAlpha = alpha * 0.25;
-              ctx.beginPath();
-              ctx.arc(s.x, s.y, radius * 3, 0, Math.PI * 2);
-              ctx.fill();
-            }
-
-            // Feature 3 (enhanced): Draw shockwave rings
+            // Shockwave rings (gravity well release only — rare)
             for (const sw of shockwaves) {
               const alpha = (1 - sw.life);
-              const lineW = Math.max(0.5, (1 - sw.life) * 3);
               ctx.strokeStyle = sw.hex;
-              ctx.lineWidth = lineW;
-              // Outer ring
-              ctx.globalAlpha = alpha * 0.4;
+              ctx.lineWidth = Math.max(0.5, alpha * 2);
+              ctx.globalAlpha = alpha * 0.35;
               ctx.beginPath();
               ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
               ctx.stroke();
-              // Inner softer ring
-              ctx.globalAlpha = alpha * 0.15;
-              ctx.beginPath();
-              ctx.arc(sw.x, sw.y, sw.radius * 0.6, 0, Math.PI * 2);
-              ctx.stroke();
-              // Center flash (only early in life)
-              if (sw.life < 0.3) {
-                const flashAlpha = (0.3 - sw.life) / 0.3;
-                ctx.globalAlpha = flashAlpha * 0.3;
-                ctx.fillStyle = sw.hex;
-                ctx.beginPath();
-                ctx.arc(sw.x, sw.y, sw.radius * 0.3, 0, Math.PI * 2);
-                ctx.fill();
-              }
             }
 
 
