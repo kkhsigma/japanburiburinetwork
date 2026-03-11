@@ -315,6 +315,7 @@ interface FloatingCard {
   squishX: number; // 1 = normal, >1 = stretched horizontally
   squishY: number; // 1 = normal, <1 = compressed vertically
   trail: TrailPoint[]; // last N positions for comet tail
+  pinned: boolean; // Feature 7: anchored in place
   el: HTMLDivElement | null;
 }
 
@@ -366,6 +367,14 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
   const prevMouseRef = useRef({ x: -1000, y: -1000 });
   const mouseSpeedRef = useRef(0);
 
+  // ── Feature 7: Double-tap to pin ──
+  const pinnedIdsRef = useRef<Set<string>>(new Set());
+
+  // ── Feature 9: Flick to launch ──
+  const flickRef = useRef<{ id: string | null; x: number; y: number; time: number }>({
+    id: null, x: 0, y: 0, time: 0,
+  });
+
   // ── Feature 4: Gravity well (long-press) ──
   const gravityWellRef = useRef<{ x: number; y: number; active: boolean; strength: number; timer: ReturnType<typeof setTimeout> | null }>({
     x: 0, y: 0, active: false, strength: 0, timer: null,
@@ -381,6 +390,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
   const [filterValue, setFilterValue] = useState<FilterValue | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const tooltipPos = useRef({ x: 0, y: 0 });
 
   const toggleSelect = useCallback((id: string) => {
@@ -447,6 +457,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         vy: (Math.random() - 0.5) * 0.3,
         squishX: 1, squishY: 1,
         trail: [],
+        pinned: false,
         el: null,
       };
     });
@@ -675,6 +686,15 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       const gwStr = gravityWellRef.current.strength;
 
       for (const card of cards) {
+        // Feature 7: Pinned cards stay frozen
+        if (card.pinned) {
+          card.vx = 0;
+          card.vy = 0;
+          card.squishX += (1 - card.squishX) * 0.15;
+          card.squishY += (1 - card.squishY) * 0.15;
+          continue;
+        }
+
         // Magnetic cursor
         const dmx = card.x - mx;
         const dmy = card.y - my;
@@ -804,7 +824,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         }
       }
 
-      // ── Elastic collision (physics only, no visual effects for performance) ──
+      // ── Elastic collision — pinned cards act as immovable walls ──
       for (let i = 0; i < cards.length; i++) {
         for (let j = i + 1; j < cards.length; j++) {
           const a = cards[i], b = cards[j];
@@ -815,27 +835,51 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
             const nx = dx / dist, ny = dy / dist;
             const overlap = minDist - dist;
 
-            // Separate
-            a.x += nx * overlap * 0.5;
-            a.y += ny * overlap * 0.5;
-            b.x -= nx * overlap * 0.5;
-            b.y -= ny * overlap * 0.5;
+            // Separate — pinned cards don't move
+            if (a.pinned && b.pinned) {
+              // Both pinned — just separate equally
+              a.x += nx * overlap * 0.5;
+              b.x -= nx * overlap * 0.5;
+              a.y += ny * overlap * 0.5;
+              b.y -= ny * overlap * 0.5;
+            } else if (a.pinned) {
+              b.x -= nx * overlap;
+              b.y -= ny * overlap;
+            } else if (b.pinned) {
+              a.x += nx * overlap;
+              a.y += ny * overlap;
+            } else {
+              a.x += nx * overlap * 0.5;
+              a.y += ny * overlap * 0.5;
+              b.x -= nx * overlap * 0.5;
+              b.y -= ny * overlap * 0.5;
+            }
 
-            // Elastic velocity exchange along collision normal
+            // Elastic velocity exchange
             const dvx = a.vx - b.vx;
             const dvy = a.vy - b.vy;
             const dotN = dvx * nx + dvy * ny;
             if (dotN > 0) {
-              a.vx -= dotN * nx * 0.9;
-              a.vy -= dotN * ny * 0.9;
-              b.vx += dotN * nx * 0.9;
-              b.vy += dotN * ny * 0.9;
+              if (a.pinned) {
+                // Only b bounces — full reflection off wall
+                b.vx += dotN * nx * 1.1;
+                b.vy += dotN * ny * 1.1;
+              } else if (b.pinned) {
+                // Only a bounces
+                a.vx -= dotN * nx * 1.1;
+                a.vy -= dotN * ny * 1.1;
+              } else {
+                a.vx -= dotN * nx * 0.9;
+                a.vy -= dotN * ny * 0.9;
+                b.vx += dotN * nx * 0.9;
+                b.vy += dotN * ny * 0.9;
+              }
 
-              // Jelly squish on both
+              // Jelly squish on non-pinned cards
               const impactForce = Math.abs(dotN);
               const sq = Math.min(0.4, impactForce * 1.5);
-              a.squishX = 1 + sq; a.squishY = 1 - sq * 0.6;
-              b.squishX = 1 + sq; b.squishY = 1 - sq * 0.6;
+              if (!a.pinned) { a.squishX = 1 + sq; a.squishY = 1 - sq * 0.6; }
+              if (!b.pinned) { b.squishX = 1 + sq; b.squishY = 1 - sq * 0.6; }
             }
           }
         }
@@ -1296,9 +1340,61 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
             }}
             onMouseLeave={() => setHoveredId(null)}
             onClick={() => toggleSelect(compound.id)}
+            onMouseDown={(e) => {
+              // Feature 9: Start flick tracking
+              e.stopPropagation();
+              flickRef.current = { id: compound.id, x: e.clientX, y: e.clientY, time: Date.now() };
+            }}
+            onMouseUp={(e) => {
+              const flick = flickRef.current;
+              if (flick.id !== compound.id) return;
+              const dt = Date.now() - flick.time;
+              const dx = e.clientX - flick.x;
+              const dy = e.clientY - flick.y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              // Quick swipe: < 300ms and > 20px distance
+              if (dt < 300 && dist > 20) {
+                const card = cardsRef.current.find(c => c.id === compound.id);
+                if (card && !card.pinned) {
+                  const speed = Math.min(dist / dt * 8, 15); // scale up, cap at 15
+                  card.vx = (dx / dist) * speed;
+                  card.vy = (dy / dist) * speed;
+                  card.squishX = 1.3;
+                  card.squishY = 0.7;
+                }
+              }
+              flickRef.current = { id: null, x: 0, y: 0, time: 0 };
+            }}
+            onDoubleClick={() => {
+              // Feature 7: Toggle pin
+              const card = cardsRef.current.find(c => c.id === compound.id);
+              if (card) {
+                card.pinned = !card.pinned;
+                if (card.pinned) {
+                  card.vx = 0;
+                  card.vy = 0;
+                  pinnedIdsRef.current.add(compound.id);
+                } else {
+                  pinnedIdsRef.current.delete(compound.id);
+                }
+                // Force re-render for pin visual
+                setPinnedIds(new Set(pinnedIdsRef.current));
+              }
+            }}
           >
             {/* The card IS the molecular structure */}
             <div className="relative">
+              {/* Feature 7: Pin indicator — pulsing ring */}
+              {pinnedIds.has(compound.id) && (
+                <div
+                  className="absolute -inset-2 rounded-2xl pointer-events-none"
+                  style={{
+                    border: `1.5px solid ${hex}`,
+                    boxShadow: `0 0 10px ${hex}50, 0 0 20px ${hex}20`,
+                    animation: "pulse 1.5s ease-in-out infinite",
+                  }}
+                />
+              )}
               {/* Selection ring */}
               {selectedIds.includes(compound.id) && (
                 <div
@@ -1333,6 +1429,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
                   }}
                 />
                 <span className="text-[8px] font-bold text-white/90 tracking-tight" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.7)" }}>
+                  {pinnedIds.has(compound.id) && <span className="text-[7px] mr-0.5" style={{ color: hex }}>&#x25C9;</span>}
                   {compound.name}
                 </span>
                 <span
