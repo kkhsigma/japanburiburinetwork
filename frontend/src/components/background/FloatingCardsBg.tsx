@@ -308,8 +308,8 @@ interface FloatingCard {
 }
 
 // Sized for molecular structure display
-const CARD_W = 115;
-const CARD_H = 68;
+const CARD_W = 135;
+const CARD_H = 80;
 const EXCLUSION_W = 500;
 const EXCLUSION_H = 350;
 const BAR_HEIGHT = 70; // substance bar collision zone from bottom
@@ -538,8 +538,8 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         if (cardBottom > barTop) {
           card.y = barTop - CARD_H / 2;
           const impactSpeed = Math.abs(card.vy);
-          // Rubber ball bounce — visible but not frantic
-          card.vy = -Math.max(impactSpeed * 0.95, 1.5);
+          // Bounce off bar — gentle reflection
+          card.vy = -Math.max(impactSpeed * 0.6, 0.3);
           // Jelly squish on impact
           const squishAmount = Math.min(0.5, impactSpeed * 1.0);
           card.squishX = 1 + squishAmount;
@@ -548,7 +548,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
 
         // Regular bottom boundary (fallback — use container height)
         const maxY = Math.min(ch - padY, barTop - CARD_H / 2);
-        if (card.y > maxY) { card.y = maxY; card.vy = -1.2; }
+        if (card.y > maxY) { card.y = maxY; card.vy = -0.4; }
 
         // Center exclusion zone
         const relX = card.x - cx;
@@ -560,8 +560,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
           else card.vy += pushY * 0.04;
         }
 
-        // Gentle gravity — pulls molecules down so they arc like rubber balls
-        card.vy += 0.006;
+        // No gravity — molecules float freely in space
 
         card.vx += (Math.random() - 0.5) * 0.012;
         card.vy += (Math.random() - 0.5) * 0.01;
