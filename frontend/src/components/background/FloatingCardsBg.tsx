@@ -658,6 +658,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       container.removeEventListener("mouseleave", onMouseLeave);
       cancelAnimationFrame(animRef.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initCards, updateCardDOM]);
 
   const isTransitioning = transitionState !== "idle";

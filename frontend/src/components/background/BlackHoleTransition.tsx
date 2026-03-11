@@ -19,10 +19,6 @@ function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
 }
 
-function easeOutQuint(t: number): number {
-  return 1 - Math.pow(1 - t, 5);
-}
-
 function easeInQuart(t: number): number {
   return t * t * t * t;
 }
