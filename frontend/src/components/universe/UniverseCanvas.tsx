@@ -47,7 +47,7 @@ function fbm3d(x: number, y: number, z: number, octaves: number): number {
 // ─── Equirectangular Planet Texture ─────────────────────
 
 function generatePlanetMap(worldId: string): HTMLCanvasElement {
-  const W = 512, H = 256;
+  const W = 256, H = 128;
   const cvs = document.createElement("canvas");
   cvs.width = W;
   cvs.height = H;
@@ -68,10 +68,10 @@ function generatePlanetMap(worldId: string): HTMLCanvasElement {
       let cr: number, cg: number, cb: number;
 
       if (worldId === "cannabis") {
-        const cont = fbm3d(sx * 3.5 + 1.2, sy * 3.5, sz * 3.5, 6);
-        const det = fbm3d(sx * 9 + 3.7, sy * 9 + 1.2, sz * 9, 4);
-        const mst = fbm3d(sx * 5 + 7.1, sy * 5 + 4.4, sz * 5, 3);
-        const cld = fbm3d(sx * 2.5 + 0.3, sy * 2.5 + 0.7, sz * 2.5, 4);
+        const cont = fbm3d(sx * 3.5 + 1.2, sy * 3.5, sz * 3.5, 4);
+        const det = fbm3d(sx * 9 + 3.7, sy * 9 + 1.2, sz * 9, 3);
+        const mst = fbm3d(sx * 5 + 7.1, sy * 5 + 4.4, sz * 5, 2);
+        const cld = fbm3d(sx * 2.5 + 0.3, sy * 2.5 + 0.7, sz * 2.5, 3);
         if (cont > 0.4) {
           const el = (cont - 0.4) * 3.5;
           if (el < 0.25) {
@@ -107,9 +107,9 @@ function generatePlanetMap(worldId: string): HTMLCanvasElement {
           cb = cb * (1 - ca) + 245 * ca;
         }
       } else if (worldId === "psychedelics") {
-        const turb = fbm3d(sx * 4.5 + 1.5, sy * 8 + 0.8, sz * 4.5, 5);
-        const flow = fbm3d(sx * 2 + turb * 2.5, sy * 4, sz * 2, 4);
-        const storm = fbm3d(sx * 1.8 + 7.3, sy * 1.8 + 2.1, sz * 1.8, 5);
+        const turb = fbm3d(sx * 4.5 + 1.5, sy * 8 + 0.8, sz * 4.5, 4);
+        const flow = fbm3d(sx * 2 + turb * 2.5, sy * 4, sz * 2, 3);
+        const storm = fbm3d(sx * 1.8 + 7.3, sy * 1.8 + 2.1, sz * 1.8, 4);
         const bandBase = sy * 7;
         const band = Math.sin(bandBase + turb * 3.5 + flow * 1.5) * 0.5 + 0.5;
         const swirl = Math.sin(sx * 12 + turb * 5 + sy * 4) * 0.5 + 0.5;
@@ -136,10 +136,10 @@ function generatePlanetMap(worldId: string): HTMLCanvasElement {
           cb += vi * 70;
         }
       } else {
-        const ice = fbm3d(sx * 3 + 0.5, sy * 3, sz * 3, 6);
-        const crk = fbm3d(sx * 11, sy * 5.5, sz * 11, 5);
-        const crys = fbm3d(sx * 7 + 5.5, sy * 3.5 + 3.3, sz * 7, 4);
-        const sub = fbm3d(sx * 4 + 9.1, sy * 2 + 6.7, sz * 4, 3);
+        const ice = fbm3d(sx * 3 + 0.5, sy * 3, sz * 3, 4);
+        const crk = fbm3d(sx * 11, sy * 5.5, sz * 11, 3);
+        const crys = fbm3d(sx * 7 + 5.5, sy * 3.5 + 3.3, sz * 7, 3);
+        const sub = fbm3d(sx * 4 + 9.1, sy * 2 + 6.7, sz * 4, 2);
         if (ice > 0.32) {
           const iv = crys * 0.6 + sub * 0.4;
           cr = 120 + iv * 80;
@@ -416,7 +416,7 @@ function GoldenPath({
     const mid = new THREE.Vector3().lerpVectors(s, e, 0.5);
     mid.y += Math.max(1.2, s.distanceTo(e) * 0.1);
     const curve = new THREE.QuadraticBezierCurve3(s, mid, e);
-    const geo = new THREE.TubeGeometry(curve, 80, 0.045, 8, false);
+    const geo = new THREE.TubeGeometry(curve, 40, 0.045, 6, false);
     // Start with nothing drawn
     geo.setDrawRange(0, 0);
     return geo;
@@ -699,7 +699,7 @@ function Atmosphere({
 
   return (
     <mesh>
-      <sphereGeometry args={[radius * 1.35, 32, 16]} />
+      <sphereGeometry args={[radius * 1.35, 24, 12]} />
       <shaderMaterial
         transparent
         side={THREE.BackSide}
@@ -716,7 +716,7 @@ function Atmosphere({
 // ─── Planet Rings (Psychedelics) — Icy texture ──────────
 
 function generateIceRingTexture(): THREE.CanvasTexture {
-  const W = 512, H = 128;
+  const W = 256, H = 64;
   const cvs = document.createElement("canvas");
   cvs.width = W;
   cvs.height = H;
@@ -736,9 +736,9 @@ function generateIceRingTexture(): THREE.CanvasTexture {
       const angle = u * Math.PI * 2;
 
       // Large-scale ice structure
-      const n1 = fbm3d(Math.cos(angle) * 4 + 1.2, Math.sin(angle) * 4, v * 6, 5);
+      const n1 = fbm3d(Math.cos(angle) * 4 + 1.2, Math.sin(angle) * 4, v * 6, 3);
       // Fine cracks
-      const crack = fbm3d(Math.cos(angle) * 12, Math.sin(angle) * 12, v * 15 + 3.7, 4);
+      const crack = fbm3d(Math.cos(angle) * 12, Math.sin(angle) * 12, v * 15 + 3.7, 3);
       const crackLine = Math.abs(Math.sin(crack * 18 + n1 * 5));
       // Crystal sparkle
       const sparkle = hash(Math.floor(px * 0.7 + py * 31.3), Math.floor(py * 0.9 + px * 17.7));
@@ -815,7 +815,7 @@ function PlanetRings({ radius }: { radius: number }) {
 
   return (
     <mesh ref={ringRef} rotation={[1.2, 0.15, 0]}>
-      <ringGeometry args={[radius * 1.5, radius * 2.4, 120, 1]} />
+      <ringGeometry args={[radius * 1.5, radius * 2.4, 48, 1]} />
       <meshStandardMaterial
         map={texture}
         transparent
@@ -905,7 +905,7 @@ function PlanetNode({
         }}
         scale={hovered ? 1.1 : 1}
       >
-        <sphereGeometry args={[world.radius, 64, 32]} />
+        <sphereGeometry args={[world.radius, 32, 16]} />
         <meshStandardMaterial
           map={texture}
           roughness={0.45}
@@ -1241,7 +1241,7 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
     <group ref={groupRef}>
       {/* Soft warm glow — larger and brighter */}
       <mesh>
-        <sphereGeometry args={[3.0, 24, 24]} />
+        <sphereGeometry args={[3.0, 12, 8]} />
         <meshBasicMaterial
           color={new THREE.Color(1.5, 1.0, 0.3)}
           transparent
@@ -1254,7 +1254,7 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
       </mesh>
       {/* Inner bright glow */}
       <mesh>
-        <sphereGeometry args={[1.8, 24, 24]} />
+        <sphereGeometry args={[1.8, 12, 8]} />
         <meshBasicMaterial
           color={new THREE.Color(2.0, 1.5, 0.5)}
           transparent
@@ -1445,7 +1445,7 @@ function NovaSpawn({
   }), [color]);
 
   const { pGeo, pVels, pCount } = useMemo(() => {
-    const cnt = 40;
+    const cnt = 20;
     const { geo, vels } = buildNovaParticles(cnt, 2, 5);
     return { pGeo: geo, pVels: vels, pCount: cnt };
   }, []);
@@ -1576,7 +1576,7 @@ function NovaSpawn({
 
       {/* Shockwave ring — very thin torus */}
       <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]} visible={false}>
-        <torusGeometry args={[1, 0.012, 8, 80]} />
+        <torusGeometry args={[1, 0.012, 6, 36]} />
         <meshBasicMaterial color={novaColor} transparent opacity={0}
           toneMapped={false} depthWrite={false} blending={THREE.AdditiveBlending} />
       </mesh>
@@ -1611,7 +1611,7 @@ function SunNova({ children }: { children: React.ReactNode }) {
   }), []);
 
   const { pGeo, pVels, pCount } = useMemo(() => {
-    const cnt = 60;
+    const cnt = 30;
     const { geo, vels } = buildNovaParticles(cnt, 3, 9);
     return { pGeo: geo, pVels: vels, pCount: cnt };
   }, []);
@@ -1753,12 +1753,12 @@ function SunNova({ children }: { children: React.ReactNode }) {
 
       {/* Shockwave rings */}
       <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]} visible={false}>
-        <torusGeometry args={[1.2, 0.012, 8, 80]} />
+        <torusGeometry args={[1.2, 0.012, 6, 36]} />
         <meshBasicMaterial color={sunColor} transparent opacity={0}
           toneMapped={false} depthWrite={false} blending={THREE.AdditiveBlending} />
       </mesh>
       <mesh ref={ring2Ref} rotation={[Math.PI / 3, 0.4, 0]} visible={false}>
-        <torusGeometry args={[1, 0.01, 8, 80]} />
+        <torusGeometry args={[1, 0.01, 6, 36]} />
         <meshBasicMaterial color={warmWhite} transparent opacity={0}
           toneMapped={false} depthWrite={false} blending={THREE.AdditiveBlending} />
       </mesh>
@@ -1792,7 +1792,7 @@ function CentralHub() {
         }}
         scale={hovered ? 1.15 : 1}
       >
-        <sphereGeometry args={[0.65, 48, 48]} />
+        <sphereGeometry args={[0.65, 24, 24]} />
         <meshBasicMaterial
           color={new THREE.Color(4, 2.8, 0.8)}
           toneMapped={false}
@@ -1801,7 +1801,7 @@ function CentralHub() {
 
       {/* Inner corona — hot white-gold */}
       <mesh>
-        <sphereGeometry args={[1.1, 32, 32]} />
+        <sphereGeometry args={[1.1, 16, 16]} />
         <meshBasicMaterial
           color={new THREE.Color(2.5, 1.8, 0.5)}
           transparent
@@ -1815,7 +1815,7 @@ function CentralHub() {
 
       {/* Outer corona — wider, softer glow */}
       <mesh>
-        <sphereGeometry args={[2.2, 32, 32]} />
+        <sphereGeometry args={[2.2, 16, 16]} />
         <meshBasicMaterial
           color={new THREE.Color(1.2, 0.9, 0.2)}
           transparent
@@ -1828,7 +1828,7 @@ function CentralHub() {
       </mesh>
 
       {/* Pulsing concentric rings */}
-      {[0, 1, 2, 3, 4].map((i) => (
+      {[0, 1, 2].map((i) => (
         <PulsingRing key={i} index={i} />
       ))}
 
@@ -1881,7 +1881,7 @@ function PulsingRing({ index }: { index: number }) {
 
   return (
     <mesh ref={meshRef} rotation={[Math.PI / 2, 0, 0]}>
-      <torusGeometry args={[1.5, 0.02, 8, 80]} />
+      <torusGeometry args={[1.5, 0.02, 6, 36]} />
       <meshBasicMaterial
         ref={matRef}
         color={new THREE.Color(2, 1.4, 0.3)}
@@ -1902,7 +1902,7 @@ function OrbitPath({ target, color }: { target: [number, number, number]; color:
   const geo = useMemo(() => {
     const dist = Math.sqrt(target[0] ** 2 + target[2] ** 2);
     const points: THREE.Vector3[] = [];
-    const segments = 96;
+    const segments = 48;
     for (let i = 0; i <= segments; i++) {
       const a = (i / segments) * Math.PI * 2;
       points.push(new THREE.Vector3(Math.cos(a) * dist, 0, Math.sin(a) * dist));
@@ -2380,7 +2380,7 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
       <Stars
         radius={120}
         depth={70}
-        count={isLight ? 2000 : 4000}
+        count={isLight ? 1000 : 2000}
         factor={isLight ? 3 : 4}
         saturation={isLight ? 0.3 : 0}
         fade

@@ -6,7 +6,7 @@ import { RotateCcw } from "lucide-react";
 import { UniverseCanvas } from "@/components/universe/UniverseCanvas";
 import { NavBar } from "@/components/universe/NavBar";
 import { SunRayTransition } from "@/components/universe/SunRayTransition";
-import { StarField } from "@/components/universe/StarField";
+// StarField removed — WebGL Stars inside UniverseCanvas handles star rendering
 import { StatusBar } from "@/components/universe/StatusBar";
 import { LatestAlerts } from "@/components/dashboard/LatestAlerts";
 import { RegulationTimeline } from "@/components/dashboard/RegulationTimeline";
@@ -85,8 +85,7 @@ export default function UniversePage() {
         }}
       />
 
-      {/* Star field + particles — full-page background layer */}
-      <StarField theme={theme} />
+      {/* Stars handled by WebGL Stars component inside UniverseCanvas */}
 
       {/* Fixed navbar */}
       <NavBar theme={theme} onToggleTheme={handleToggleTheme} />
