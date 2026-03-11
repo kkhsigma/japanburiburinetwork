@@ -545,6 +545,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
     };
     const endGravityWell = () => {
       if (gw.timer) { clearTimeout(gw.timer); gw.timer = null; }
+      document.body.style.userSelect = "";
       if (gw.active) {
         // Release: fling all molecules outward from the well
         const cards = cardsRef.current;
@@ -575,7 +576,16 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
     };
 
     // Mouse long-press — on document so it works through pointer-events-none layers
-    const onGwMouseDown = (e: MouseEvent) => startGravityWell(e.clientX, e.clientY);
+    // Only intercept clicks on the home page background, not on interactive elements
+    const interactiveTags = new Set(["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA"]);
+    const onGwMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Skip if clicking an interactive element or inside one
+      if (interactiveTags.has(target.tagName) || target.closest("a, button, input, select, textarea, [role=button]")) return;
+      e.preventDefault(); // prevent text selection
+      document.body.style.userSelect = "none";
+      startGravityWell(e.clientX, e.clientY);
+    };
     const onGwMouseMove = (e: MouseEvent) => moveGravityWell(e.clientX, e.clientY);
     const onGwTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) startGravityWell(e.touches[0].clientX, e.touches[0].clientY);
