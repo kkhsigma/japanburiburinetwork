@@ -34,6 +34,11 @@ export default function RootLayout({
         <QueryProvider>
           {children}
         </QueryProvider>
+        <div className="fixed top-4 left-4 z-50 pointer-events-none">
+          <span className="text-[10px] font-mono text-white/30">
+            v{process.env.NEXT_PUBLIC_APP_VERSION}
+          </span>
+        </div>
       </body>
     </html>
   );
