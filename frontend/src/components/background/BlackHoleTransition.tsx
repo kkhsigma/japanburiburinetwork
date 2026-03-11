@@ -245,9 +245,9 @@ export function BlackHoleTransition({ transitionState }: BlackHoleTransitionProp
         ctx.fill();
       }
 
-      // ── ZOOM: speed streaks, expanding darkness ──
+      // ── ZOOM: speed streaks, expanding darkness, ends in pure black ──
       if (state === "zoom") {
-        const progress = Math.min(elapsed / 600, 1);
+        const progress = Math.min(elapsed / 800, 1);
         const eased = easeInQuart(progress);
 
         // Dark overlay intensifying
@@ -562,93 +562,104 @@ export function BlackHoleTransition({ transitionState }: BlackHoleTransitionProp
       // ── WARP TUNNEL: hyperspace streaking star lines ──
       if (state === "warp") {
         const elapsed = now - stateStartRef.current;
-        const duration = 1700; // 1.7s warp
+        const duration = 2000; // 2s warp
         const progress = Math.min(elapsed / duration, 1);
         const maxDim = Math.sqrt(w * w + h * h);
 
-        // Dark background
+        // Dark background — always present
         ctx.fillStyle = "#06090f";
         ctx.fillRect(0, 0, w, h);
 
-        // Intensity curve: ramp up → sustain → fade out
+        // Intensity curve: gentle ramp up from black → sustain → fade to dark
         let intensity: number;
-        if (progress < 0.15) {
-          intensity = easeOutCubic(progress / 0.15);
-        } else if (progress < 0.75) {
+        if (progress < 0.25) {
+          // Slow emergence from darkness
+          intensity = easeOutCubic(progress / 0.25);
+        } else if (progress < 0.70) {
           intensity = 1;
         } else {
-          intensity = 1 - easeInOutCubic((progress - 0.75) / 0.25);
+          // Smooth fade out
+          intensity = 1 - easeInOutCubic((progress - 0.70) / 0.30);
         }
 
-        // Subtle radial vignette (teal tint) — skip when faded
+        // Streaks accelerate over time — speed ramps up then slows
+        let speedMultiplier: number;
+        if (progress < 0.2) {
+          speedMultiplier = 0.3 + easeOutCubic(progress / 0.2) * 0.7;
+        } else if (progress < 0.7) {
+          speedMultiplier = 1.0 + (progress - 0.2) * 0.6; // gradually faster
+        } else {
+          speedMultiplier = 1.3 - easeInOutCubic((progress - 0.7) / 0.3) * 0.8;
+        }
+
         if (intensity > 0.01) {
+          // Subtle radial vignette (teal tint)
           const vigRadius = maxDim * 0.6;
           const vig = ctx.createRadialGradient(cx, cy, 0, cx, cy, vigRadius);
-          vig.addColorStop(0, `rgba(26, 154, 138, ${0.04 * intensity})`);
-          vig.addColorStop(0.4, `rgba(10, 60, 80, ${0.03 * intensity})`);
+          vig.addColorStop(0, `rgba(26, 154, 138, ${0.05 * intensity})`);
+          vig.addColorStop(0.4, `rgba(10, 60, 80, ${0.035 * intensity})`);
           vig.addColorStop(1, "rgba(0, 0, 0, 0)");
           ctx.beginPath();
           ctx.arc(cx, cy, vigRadius, 0, Math.PI * 2);
           ctx.fillStyle = vig;
           ctx.fill();
-        }
 
-        // Warp streaks — lines radiating from center
-        const streakCount = 120;
-        const time = elapsed * 0.001;
-        ctx.lineCap = "round";
+          // Warp streaks — lines radiating from center
+          const streakCount = 140;
+          const time = elapsed * 0.001 * speedMultiplier;
+          ctx.lineCap = "round";
 
-        for (let i = 0; i < streakCount; i++) {
-          const angle = (i / streakCount) * Math.PI * 2 + i * 0.618; // golden ratio offset
-          const baseSpeed = 0.3 + (i % 7) * 0.12;
-          // Each streak cycles from center outward
-          const cycle = ((time * baseSpeed + i * 0.037) % 1);
-          const dist = cycle * maxDim * 0.75;
-          const len = (30 + (i % 5) * 25) * intensity * (0.3 + cycle * 0.7);
+          for (let i = 0; i < streakCount; i++) {
+            const angle = (i / streakCount) * Math.PI * 2 + i * 0.618;
+            const baseSpeed = 0.25 + (i % 7) * 0.1;
+            const cycle = ((time * baseSpeed + i * 0.037) % 1);
+            const dist = cycle * maxDim * 0.75;
+            // Streaks get longer as speed increases
+            const len = (25 + (i % 5) * 20) * intensity * (0.3 + cycle * 0.7) * speedMultiplier;
 
-          const cos = Math.cos(angle);
-          const sin = Math.sin(angle);
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
 
-          const x1 = cx + cos * dist;
-          const y1 = cy + sin * dist;
-          const x2 = cx + cos * (dist + len);
-          const y2 = cy + sin * (dist + len);
+            const x1 = cx + cos * dist;
+            const y1 = cy + sin * dist;
+            const x2 = cx + cos * (dist + len);
+            const y2 = cy + sin * (dist + len);
 
-          // Color: mix of white, teal, and blue
-          const hue = i % 3;
-          let r: number, g: number, b: number;
-          if (hue === 0) { r = 220; g = 240; b = 255; }       // cool white
-          else if (hue === 1) { r = 80; g = 220; b = 200; }   // teal
-          else { r = 100; g = 160; b = 255; }                  // blue
+            // Color: mix of white, teal, and blue
+            const hue = i % 3;
+            let r: number, g: number, b: number;
+            if (hue === 0) { r = 220; g = 240; b = 255; }
+            else if (hue === 1) { r = 80; g = 220; b = 200; }
+            else { r = 100; g = 160; b = 255; }
 
-          const alpha = (0.15 + (1 - cycle) * 0.5) * intensity * (0.4 + Math.random() * 0.3);
+            const flicker = 0.5 + (i * 7 + Math.floor(elapsed * 0.05)) % 3 * 0.17;
+            const alpha = (0.12 + (1 - cycle) * 0.45) * intensity * flicker;
 
-          ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
-          ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-          ctx.lineWidth = 0.8 + (1 - cycle) * 1.5;
-          ctx.stroke();
-        }
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            ctx.lineWidth = 0.7 + (1 - cycle) * 1.8 * speedMultiplier;
+            ctx.stroke();
+          }
 
-        // Central bright point — vanishing point glow (skip when faded out)
-        if (intensity > 0.01) {
-          const coreR = Math.max(30 * intensity, 1);
+          // Central vanishing point glow
+          const coreR = Math.max(35 * intensity, 1);
           const coreGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
-          coreGlow.addColorStop(0, `rgba(200, 240, 255, ${0.4 * intensity})`);
-          coreGlow.addColorStop(0.3, `rgba(26, 154, 138, ${0.15 * intensity})`);
+          coreGlow.addColorStop(0, `rgba(200, 240, 255, ${0.35 * intensity})`);
+          coreGlow.addColorStop(0.3, `rgba(26, 154, 138, ${0.12 * intensity})`);
           coreGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
           ctx.beginPath();
           ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
           ctx.fillStyle = coreGlow;
           ctx.fill();
 
-          // Wider soft glow behind the streaks
-          const outerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 80);
-          outerGlow.addColorStop(0, `rgba(26, 154, 138, ${0.06 * intensity})`);
+          // Wider soft glow
+          const outerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 90);
+          outerGlow.addColorStop(0, `rgba(26, 154, 138, ${0.05 * intensity})`);
           outerGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
           ctx.beginPath();
-          ctx.arc(cx, cy, 80, 0, Math.PI * 2);
+          ctx.arc(cx, cy, 90, 0, Math.PI * 2);
           ctx.fillStyle = outerGlow;
           ctx.fill();
         }

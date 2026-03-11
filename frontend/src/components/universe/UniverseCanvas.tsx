@@ -977,15 +977,27 @@ function DebrisField({
   );
 }
 
-// ─── Signal Beacon (Community / Blog) ───────────────────
+// ─── Floating Book (Community / Blog) ────────────────────
 
 const BOOK_POSITION: [number, number, number] = [-7, -1.8, -5];
 
-function SignalBeacon({ onSelect }: { onSelect: (id: string) => void }) {
+function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
   const groupRef = useRef<THREE.Group>(null);
-  const dishRef = useRef<THREE.Mesh>(null);
-  const blinkRef = useRef<THREE.Mesh>(null);
+  const coverRef = useRef<THREE.Group>(null);
   const [hovered, setHovered] = useState(false);
+  const openAmount = useRef(0);
+
+  const bookW = 1.6;
+  const bookH = 2.0;
+  const bookD = 0.35;
+  const coverThick = 0.04;
+
+  // Front cover pivots at spine (left edge)
+  const frontCoverGeo = useMemo(() => {
+    const geo = new THREE.BoxGeometry(bookW, bookH, coverThick);
+    geo.translate(bookW / 2, 0, 0); // pivot at left edge
+    return geo;
+  }, []);
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
@@ -997,27 +1009,23 @@ function SignalBeacon({ onSelect }: { onSelect: (id: string) => void }) {
       groupRef.current.rotation.x = Math.sin(t * 0.3 + 3.0) * 0.02;
     }
 
-    // Spinning dish
-    if (dishRef.current) {
-      dishRef.current.rotation.y = t * 0.5;
-    }
-
-    // Blinking light — pulse opacity
-    if (blinkRef.current) {
-      const mat = blinkRef.current.material as THREE.MeshBasicMaterial;
-      mat.opacity = 0.4 + Math.sin(t * 3.0) * 0.4 + Math.sin(t * 7.0) * 0.15;
+    // Open/close on hover
+    const target = hovered ? 1 : 0;
+    openAmount.current += (target - openAmount.current) * 0.08;
+    if (coverRef.current) {
+      coverRef.current.rotation.y = -openAmount.current * Math.PI * 0.4;
     }
   });
 
   return (
     <group ref={groupRef}>
-      {/* Soft glow atmosphere */}
+      {/* Soft warm glow */}
       <mesh>
-        <sphereGeometry args={[2.2, 24, 24]} />
+        <sphereGeometry args={[2.0, 24, 24]} />
         <meshBasicMaterial
-          color={new THREE.Color(0.3, 0.6, 1.0)}
+          color={new THREE.Color(1.0, 0.7, 0.2)}
           transparent
-          opacity={0.04}
+          opacity={0.03}
           side={THREE.BackSide}
           toneMapped={false}
           depthWrite={false}
@@ -1039,100 +1047,66 @@ function SignalBeacon({ onSelect }: { onSelect: (id: string) => void }) {
           setHovered(false);
           document.body.style.cursor = "default";
         }}
-        scale={hovered ? 1.12 : 1}
+        scale={hovered ? 1.08 : 1}
+        rotation={[0.1, 0.3, 0]}
       >
-        {/* Central cylinder body */}
+        {/* Back cover */}
+        <mesh position={[0, 0, -bookD / 2]}>
+          <boxGeometry args={[bookW, bookH, coverThick]} />
+          <meshStandardMaterial color="#1a1520" roughness={0.5} metalness={0.15} />
+        </mesh>
+
+        {/* Spine */}
+        <mesh position={[-bookW / 2, 0, 0]}>
+          <boxGeometry args={[coverThick, bookH, bookD]} />
+          <meshStandardMaterial color="#2a1a30" roughness={0.4} metalness={0.2} />
+        </mesh>
+
+        {/* Pages block */}
         <mesh position={[0, 0, 0]}>
-          <cylinderGeometry args={[0.25, 0.25, 1.5, 12]} />
-          <meshStandardMaterial
-            color="#1a2a3a"
-            roughness={0.3}
-            metalness={0.85}
-          />
+          <boxGeometry args={[bookW * 0.92, bookH * 0.94, bookD * 0.75]} />
+          <meshStandardMaterial color="#e8dcc8" roughness={0.9} metalness={0} />
         </mesh>
 
-        {/* Spinning dish / ring at top */}
-        <mesh ref={dishRef} position={[0, 0.9, 0]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.45, 0.06, 8, 24]} />
-          <meshStandardMaterial
-            color="#4a7a9a"
-            roughness={0.25}
-            metalness={0.9}
-            emissive="#1a3a5a"
-            emissiveIntensity={0.3}
-          />
-        </mesh>
-
-        {/* Blinking light at very top */}
-        <mesh ref={blinkRef} position={[0, 1.1, 0]}>
-          <sphereGeometry args={[0.08, 12, 12]} />
-          <meshBasicMaterial
-            color={new THREE.Color(2.0, 0.6, 0.3)}
-            transparent
-            opacity={0.8}
-            toneMapped={false}
-          />
-        </mesh>
-
-        {/* Solar panel 1 — angled right */}
-        <group position={[0.5, 0.1, 0]} rotation={[0, 0, -0.4]}>
-          <mesh>
-            <boxGeometry args={[0.6, 0.02, 0.35]} />
+        {/* Front cover — pivots open */}
+        <group ref={coverRef} position={[-bookW / 2, 0, bookD / 2]}>
+          <mesh geometry={frontCoverGeo}>
             <meshStandardMaterial
-              color="#1a2240"
-              roughness={0.4}
-              metalness={0.7}
-              emissive="#0a1530"
-              emissiveIntensity={0.2}
+              color="#2a1a35"
+              roughness={0.45}
+              metalness={0.2}
+              emissive="#1a0a25"
+              emissiveIntensity={0.15}
+            />
+          </mesh>
+          {/* Gold title embossing on front cover */}
+          <mesh position={[bookW / 2, bookH * 0.15, coverThick / 2 + 0.005]}>
+            <planeGeometry args={[bookW * 0.5, bookH * 0.06]} />
+            <meshBasicMaterial
+              color={new THREE.Color(2.0, 1.5, 0.4)}
+              toneMapped={false}
+              transparent
+              opacity={0.6}
+            />
+          </mesh>
+          <mesh position={[bookW / 2, -bookH * 0.05, coverThick / 2 + 0.005]}>
+            <planeGeometry args={[bookW * 0.35, bookH * 0.04]} />
+            <meshBasicMaterial
+              color={new THREE.Color(1.5, 1.1, 0.3)}
+              toneMapped={false}
+              transparent
+              opacity={0.4}
             />
           </mesh>
         </group>
-
-        {/* Solar panel 2 — angled left */}
-        <group position={[-0.5, 0.1, 0]} rotation={[0, 0, 0.4]}>
-          <mesh>
-            <boxGeometry args={[0.6, 0.02, 0.35]} />
-            <meshStandardMaterial
-              color="#1a2240"
-              roughness={0.4}
-              metalness={0.7}
-              emissive="#0a1530"
-              emissiveIntensity={0.2}
-            />
-          </mesh>
-        </group>
-
-        {/* Solar panel 3 — angled back */}
-        <group position={[0, 0.1, -0.5]} rotation={[0.4, 0, 0]}>
-          <mesh>
-            <boxGeometry args={[0.35, 0.02, 0.6]} />
-            <meshStandardMaterial
-              color="#1a2240"
-              roughness={0.4}
-              metalness={0.7}
-              emissive="#0a1530"
-              emissiveIntensity={0.2}
-            />
-          </mesh>
-        </group>
-
-        {/* Bottom cap / antenna base */}
-        <mesh position={[0, -0.85, 0]}>
-          <cylinderGeometry args={[0.15, 0.3, 0.2, 8]} />
-          <meshStandardMaterial
-            color="#2a3a4a"
-            roughness={0.35}
-            metalness={0.8}
-          />
-        </mesh>
       </group>
 
-      {/* Orbiting signal particles */}
-      <SignalParticles />
+      {/* Floating particles around book */}
+      <BookParticles />
 
       {/* Label */}
       <Html
-        position={[0, -2.0, 0]}
+        position={[0, -1.8, 0]}
         center
         style={{ pointerEvents: "none", whiteSpace: "nowrap" }}
       >
@@ -1159,7 +1133,7 @@ function SignalBeacon({ onSelect }: { onSelect: (id: string) => void }) {
               textShadow: "0 0 8px rgba(0,0,0,0.8)",
             }}
           >
-            ブログ &amp; 交流
+            ブログ & 交流
           </div>
         </div>
       </Html>
@@ -1167,7 +1141,7 @@ function SignalBeacon({ onSelect }: { onSelect: (id: string) => void }) {
   );
 }
 
-function SignalParticles() {
+function BookParticles() {
   const count = 10;
   const pointsRef = useRef<THREE.Points>(null);
 
@@ -1195,9 +1169,9 @@ function SignalParticles() {
     <points ref={pointsRef} geometry={geo}>
       <pointsMaterial
         size={0.05}
-        color={new THREE.Color(0.5, 1.2, 2.0)}
+        color={new THREE.Color(2.0, 1.5, 0.4)}
         transparent
-        opacity={0.5}
+        opacity={0.4}
         sizeAttenuation
         toneMapped={false}
       />
@@ -2030,7 +2004,7 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
               color="#d4a72d"
               position={BOOK_POSITION}
             >
-              <SignalBeacon onSelect={handleSelect} />
+              <FloatingBook onSelect={handleSelect} />
             </NovaSpawn>
           </>
         );
