@@ -329,16 +329,12 @@ const TRAIL_LENGTH = 8;
 const MAX_SPARKS = 60;
 const MAX_SHOCKWAVES = 10;
 
-// ── Shake detection constants ──
-const SHAKE_THRESHOLD = 25; // acceleration magnitude to trigger shake
-const SHAKE_COOLDOWN = 800; // ms between shakes
-const SCATTER_FORCE = 8; // explosion velocity magnitude
 
 // Sized for molecular structure display
 const CARD_W = 135;
 const CARD_H = 80;
-const EXCLUSION_W = 500;
-const EXCLUSION_H = 350;
+const EXCLUSION_W = 420;
+const EXCLUSION_H = 250;
 const BAR_HEIGHT = 70; // substance bar collision zone from bottom
 
 // ── Compare Row helper ──
@@ -379,17 +375,10 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
   const prevMouseRef = useRef({ x: -1000, y: -1000 });
   const mouseSpeedRef = useRef(0);
 
-  // ── Feature: Shake to scatter (mobile) ──
-  const lastShakeRef = useRef(0);
-  const shakeFlashRef = useRef(0); // 0→1 flash animation progress
-
   // ── Feature 4: Gravity well (long-press) ──
   const gravityWellRef = useRef<{ x: number; y: number; active: boolean; strength: number; timer: ReturnType<typeof setTimeout> | null }>({
     x: 0, y: 0, active: false, strength: 0, timer: null,
   });
-
-  // ── Feature 5: Tilt to flow (mobile gyroscope) ──
-  const tiltRef = useRef({ x: 0, y: 0 }); // normalized tilt: -1 to 1
 
   // Pre-built lookup for O(1) compound data access in physics loop
   const compLookup = useRef(new Map(
@@ -535,59 +524,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       scrollY.current = newY;
     };
 
-    // ── Shake to scatter (mobile gyroscope) ──
-    const onDeviceMotion = (e: DeviceMotionEvent) => {
-      const acc = e.accelerationIncludingGravity;
-      if (!acc || acc.x == null || acc.y == null || acc.z == null) return;
-      const magnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
-      const now = Date.now();
-      if (magnitude > SHAKE_THRESHOLD && now - lastShakeRef.current > SHAKE_COOLDOWN) {
-        lastShakeRef.current = now;
-        shakeFlashRef.current = 0.01; // trigger flash
-        const cards = cardsRef.current;
-        const cw = sizeRef.current.w;
-        const ch = sizeRef.current.h;
-        const centerX = cw / 2;
-        const centerY = ch / 2;
-        for (const card of cards) {
-          // Explode outward from center
-          const dx = card.x - centerX;
-          const dy = card.y - centerY;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = SCATTER_FORCE + Math.random() * 2;
-          card.vx = (dx / dist) * force + (Math.random() - 0.5) * 3;
-          card.vy = (dy / dist) * force + (Math.random() - 0.5) * 3;
-          // Jelly squish from the blast
-          card.squishX = 1.4 + Math.random() * 0.3;
-          card.squishY = 0.6 - Math.random() * 0.15;
-        }
-        // Spawn a big center shockwave
-        const shockwaves = shockwavesRef.current;
-        if (shockwaves.length < MAX_SHOCKWAVES) {
-          shockwaves.push({
-            x: centerX, y: centerY,
-            radius: 0, maxRadius: Math.max(cw, ch) * 0.7,
-            life: 0, hex: "#1a9a8a",
-          });
-        }
-      }
-    };
-    window.addEventListener("devicemotion", onDeviceMotion);
-
-    // ── Feature 5: Tilt to flow (mobile gyroscope) ──
-    const onDeviceOrientation = (e: DeviceOrientationEvent) => {
-      // beta = front-back tilt (-180→180), gamma = left-right tilt (-90→90)
-      const beta = e.beta ?? 0;
-      const gamma = e.gamma ?? 0;
-      // Normalize to -1→1 range, subtract ~45° resting angle for beta (holding phone)
-      tiltRef.current = {
-        x: Math.max(-1, Math.min(1, gamma / 30)),     // left-right
-        y: Math.max(-1, Math.min(1, (beta - 45) / 30)), // forward-back (adjusted for holding angle)
-      };
-    };
-    window.addEventListener("deviceorientation", onDeviceOrientation);
-
-    // ── Feature 4: Gravity well — long-press on container ──
+    // ── Feature 4: Gravity well — long-press anywhere on page ──
     const LONG_PRESS_MS = 400;
     const gw = gravityWellRef.current;
 
@@ -631,18 +568,22 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       }
     };
 
-    // Mouse long-press
-    container.addEventListener("mousedown", (e: MouseEvent) => startGravityWell(e.clientX, e.clientY));
-    window.addEventListener("mouseup", endGravityWell);
-    // Touch long-press
-    container.addEventListener("touchstart", (e: TouchEvent) => {
+    // Mouse long-press — on document so it works through pointer-events-none layers
+    const onGwMouseDown = (e: MouseEvent) => startGravityWell(e.clientX, e.clientY);
+    const onGwMouseMove = (e: MouseEvent) => moveGravityWell(e.clientX, e.clientY);
+    const onGwTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) startGravityWell(e.touches[0].clientX, e.touches[0].clientY);
-    }, { passive: true });
+    };
+    const onGwTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) moveGravityWell(e.touches[0].clientX, e.touches[0].clientY);
+    };
+    document.addEventListener("mousedown", onGwMouseDown);
+    document.addEventListener("mousemove", onGwMouseMove);
+    window.addEventListener("mouseup", endGravityWell);
+    document.addEventListener("touchstart", onGwTouchStart, { passive: true });
+    document.addEventListener("touchmove", onGwTouchMove, { passive: true });
     window.addEventListener("touchend", endGravityWell);
     window.addEventListener("touchcancel", endGravityWell);
-    container.addEventListener("touchmove", (e: TouchEvent) => {
-      if (e.touches.length === 1) moveGravityWell(e.touches[0].clientX, e.touches[0].clientY);
-    }, { passive: true });
 
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -717,10 +658,6 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       const gwY = gravityWellRef.current.y;
       const gwStr = gravityWellRef.current.strength;
 
-      // ── Feature 5: Tilt force ──
-      const tiltX = tiltRef.current.x;
-      const tiltY = tiltRef.current.y;
-
       for (const card of cards) {
         // Magnetic cursor
         const dmx = card.x - mx;
@@ -759,12 +696,6 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
           card.vy *= 0.97;
         }
 
-        // ── Feature 5: Tilt to flow — apply as constant acceleration ──
-        if (Math.abs(tiltX) > 0.05 || Math.abs(tiltY) > 0.05) {
-          card.vx += tiltX * 0.04;
-          card.vy += tiltY * 0.04;
-        }
-
         card.x += card.vx;
         card.y += card.vy;
 
@@ -772,7 +703,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         const padY = CARD_H / 2 + 4;
         if (card.x < padX) { card.x = padX; card.vx *= -0.6; }
         if (card.x > cw - padX) { card.x = cw - padX; card.vx *= -0.6; }
-        if (card.y < padY) { card.y = padY; card.vy = Math.abs(card.vy) * 0.5; } // bounce off ceiling
+        if (card.y < padY) { card.y = padY; card.vy = Math.abs(card.vy) * 0.6 + 0.3; } // bounce off ceiling with minimum push down
 
         // Substance bar collision — momentum bounce powered by scroll speed!
         const cardBottom = card.y + CARD_H / 2;
@@ -798,19 +729,19 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         const maxY = Math.min(ch - padY, barTop - CARD_H / 2);
         if (card.y > maxY) { card.y = maxY; card.vy = -0.4; }
 
-        // Center exclusion zone — push out along the shortest escape axis
+        // Center exclusion zone — soft push outward, prefer horizontal escape
         const relX = card.x - cx;
         const relY = card.y - cy;
         if (Math.abs(relX) < exW && Math.abs(relY) < exH) {
           const overlapX = exW - Math.abs(relX);
           const overlapY = exH - Math.abs(relY);
-          if (overlapX < overlapY) {
-            // Escape horizontally (shorter path)
-            card.vx += Math.sign(relX || 1) * overlapX * 0.02;
+          // Always prefer horizontal escape to avoid vertical stacking
+          if (overlapX < overlapY * 1.5) {
+            card.vx += Math.sign(relX || 1) * overlapX * 0.012;
           } else {
-            // Escape vertically — bias downward to avoid top-stacking
-            const pushDir = relY >= 0 ? 1 : (card.y < ch * 0.3 ? 1 : -1);
-            card.vy += pushDir * overlapY * 0.02;
+            // Vertical: always push downward unless already in bottom half
+            const pushDir = card.y > cy ? 1 : (card.y < padY + CARD_H ? 1 : -1);
+            card.vy += pushDir * overlapY * 0.01;
           }
         }
 
@@ -952,11 +883,6 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         if (sw.life >= 1) shockwaves.splice(i, 1);
       }
 
-      // Shake flash decay
-      if (shakeFlashRef.current > 0) {
-        shakeFlashRef.current += 0.06;
-        if (shakeFlashRef.current >= 1) shakeFlashRef.current = 0;
-      }
 
       // ── Canvas drawing: trails + sparks + constellation lines ──
       globalTime.current += 0.02;
@@ -1037,13 +963,6 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
               }
             }
 
-            // Shake flash overlay — white flash that fades
-            if (shakeFlashRef.current > 0 && shakeFlashRef.current < 1) {
-              const flashAlpha = (1 - shakeFlashRef.current) * 0.12;
-              ctx.globalAlpha = flashAlpha;
-              ctx.fillStyle = "#1a9a8a";
-              ctx.fillRect(0, 0, cw, ch);
-            }
 
             // ── Feature 4: Gravity well visual — swirling vortex ──
             if (gwActive && gwStr > 0) {
@@ -1193,10 +1112,12 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
     return () => {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", endGravityWell);
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("devicemotion", onDeviceMotion);
-      window.removeEventListener("deviceorientation", onDeviceOrientation);
+      document.removeEventListener("mousedown", onGwMouseDown);
+      document.removeEventListener("mousemove", onGwMouseMove);
+      window.removeEventListener("mouseup", endGravityWell);
+      document.removeEventListener("touchstart", onGwTouchStart);
+      document.removeEventListener("touchmove", onGwTouchMove);
       window.removeEventListener("touchend", endGravityWell);
       window.removeEventListener("touchcancel", endGravityWell);
       container.removeEventListener("mouseleave", onMouseLeave);
