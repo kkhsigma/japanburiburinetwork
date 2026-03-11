@@ -26,9 +26,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja">
+    <html lang="ja" style={{ backgroundColor: "#06090f" }}>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#06090f] text-[#e2e8f0] min-h-screen`}
+        style={{ backgroundColor: "#06090f" }}
       >
         <QueryProvider>
           {children}

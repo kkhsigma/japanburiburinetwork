@@ -186,7 +186,7 @@ export function ParticleField({ className, transitionState = "idle" }: ParticleF
         absorptionRadius = 35;
         connectionFade = 0.1;
         damping = 0.99;
-      } else if (state === "zoom" || state === "supernova" || state === "navigate") {
+      } else if (state === "zoom" || state === "supernova" || state === "warp" || state === "navigate") {
         gravityStrength = 10;
         spiralFactor = 0.15;
         absorptionRadius = 80;
@@ -263,7 +263,7 @@ export function ParticleField({ className, transitionState = "idle" }: ParticleF
         // Draw particle (skip if fully absorbed)
         if (p.opacity > 0.01) {
           // During zoom, draw streaks instead of dots
-          if (state === "zoom" || state === "navigate") {
+          if (state === "zoom" || state === "warp" || state === "navigate") {
             const vel = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
             if (vel > 1) {
               const streakLen = Math.min(vel * 3, 40);

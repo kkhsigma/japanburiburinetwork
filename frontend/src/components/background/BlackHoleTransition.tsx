@@ -559,6 +559,101 @@ export function BlackHoleTransition({ transitionState }: BlackHoleTransitionProp
         }
       }
 
+      // ── WARP TUNNEL: hyperspace streaking star lines ──
+      if (state === "warp") {
+        const elapsed = now - stateStartRef.current;
+        const duration = 1700; // 1.7s warp
+        const progress = Math.min(elapsed / duration, 1);
+        const maxDim = Math.sqrt(w * w + h * h);
+
+        // Dark background
+        ctx.fillStyle = "#06090f";
+        ctx.fillRect(0, 0, w, h);
+
+        // Intensity curve: ramp up → sustain → fade out
+        let intensity: number;
+        if (progress < 0.15) {
+          intensity = easeOutCubic(progress / 0.15);
+        } else if (progress < 0.75) {
+          intensity = 1;
+        } else {
+          intensity = 1 - easeInOutCubic((progress - 0.75) / 0.25);
+        }
+
+        // Subtle radial vignette (teal tint) — skip when faded
+        if (intensity > 0.01) {
+          const vigRadius = maxDim * 0.6;
+          const vig = ctx.createRadialGradient(cx, cy, 0, cx, cy, vigRadius);
+          vig.addColorStop(0, `rgba(26, 154, 138, ${0.04 * intensity})`);
+          vig.addColorStop(0.4, `rgba(10, 60, 80, ${0.03 * intensity})`);
+          vig.addColorStop(1, "rgba(0, 0, 0, 0)");
+          ctx.beginPath();
+          ctx.arc(cx, cy, vigRadius, 0, Math.PI * 2);
+          ctx.fillStyle = vig;
+          ctx.fill();
+        }
+
+        // Warp streaks — lines radiating from center
+        const streakCount = 120;
+        const time = elapsed * 0.001;
+        ctx.lineCap = "round";
+
+        for (let i = 0; i < streakCount; i++) {
+          const angle = (i / streakCount) * Math.PI * 2 + i * 0.618; // golden ratio offset
+          const baseSpeed = 0.3 + (i % 7) * 0.12;
+          // Each streak cycles from center outward
+          const cycle = ((time * baseSpeed + i * 0.037) % 1);
+          const dist = cycle * maxDim * 0.75;
+          const len = (30 + (i % 5) * 25) * intensity * (0.3 + cycle * 0.7);
+
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+
+          const x1 = cx + cos * dist;
+          const y1 = cy + sin * dist;
+          const x2 = cx + cos * (dist + len);
+          const y2 = cy + sin * (dist + len);
+
+          // Color: mix of white, teal, and blue
+          const hue = i % 3;
+          let r: number, g: number, b: number;
+          if (hue === 0) { r = 220; g = 240; b = 255; }       // cool white
+          else if (hue === 1) { r = 80; g = 220; b = 200; }   // teal
+          else { r = 100; g = 160; b = 255; }                  // blue
+
+          const alpha = (0.15 + (1 - cycle) * 0.5) * intensity * (0.4 + Math.random() * 0.3);
+
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+          ctx.lineWidth = 0.8 + (1 - cycle) * 1.5;
+          ctx.stroke();
+        }
+
+        // Central bright point — vanishing point glow (skip when faded out)
+        if (intensity > 0.01) {
+          const coreR = Math.max(30 * intensity, 1);
+          const coreGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
+          coreGlow.addColorStop(0, `rgba(200, 240, 255, ${0.4 * intensity})`);
+          coreGlow.addColorStop(0.3, `rgba(26, 154, 138, ${0.15 * intensity})`);
+          coreGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+          ctx.beginPath();
+          ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+          ctx.fillStyle = coreGlow;
+          ctx.fill();
+
+          // Wider soft glow behind the streaks
+          const outerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 80);
+          outerGlow.addColorStop(0, `rgba(26, 154, 138, ${0.06 * intensity})`);
+          outerGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+          ctx.beginPath();
+          ctx.arc(cx, cy, 80, 0, Math.PI * 2);
+          ctx.fillStyle = outerGlow;
+          ctx.fill();
+        }
+      }
+
       // ── NAVIGATE: deep space (matches universe page bg) ──
       if (state === "navigate") {
         ctx.fillStyle = "#06090f";

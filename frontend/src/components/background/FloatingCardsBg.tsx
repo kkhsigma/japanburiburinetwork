@@ -26,6 +26,18 @@ const statusLabels: Record<LegalStatus, string> = {
   unknown: "未確認", recalled: "リコール",
 };
 
+// Color molecules by their legal status in Japan
+const statusHex: Record<LegalStatus, string> = {
+  effective: "#ef4444",       // red — actively enforced / banned
+  promulgated: "#f97316",     // orange — announced, not yet enforced
+  official_confirmed: "#fb923c", // amber — confirmed by authorities
+  under_review: "#eab308",    // yellow — under review
+  pending: "#a3a3a3",         // gray — pending decision
+  reported: "#facc15",        // warm yellow — reported
+  unknown: "#38bdf8",         // blue — unknown / unregulated
+  recalled: "#22c55e",        // green — recalled / delisted
+};
+
 // ── Molecular structure SVG data per chemical family ──
 // Each structure is an array of bonds (line segments) and atoms (circle positions)
 // Coordinates are in a 0-80 x 0-70 viewBox
@@ -296,8 +308,8 @@ interface FloatingCard {
 }
 
 // Sized for molecular structure display
-const CARD_W = 120;
-const CARD_H = 72;
+const CARD_W = 115;
+const CARD_H = 68;
 const EXCLUSION_W = 500;
 const EXCLUSION_H = 350;
 const BAR_HEIGHT = 70; // substance bar collision zone from bottom
@@ -320,7 +332,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
 
   // Pre-built lookup for O(1) compound data access in physics loop
   const compLookup = useRef(new Map(
-    mockCompounds.map((c) => [c.id, { family: c.chemical_family ?? "Other", hex: riskHex[c.risk_level] || riskHex.medium, risk: c.risk_level }])
+    mockCompounds.map((c) => [c.id, { family: c.chemical_family ?? "Other", hex: statusHex[c.legal_status_japan] || statusHex.unknown, risk: c.risk_level, status: c.legal_status_japan }])
   )).current;
   const filterRef = useRef<{ mode: FilterMode; value: FilterValue | null }>({ mode: "none", value: null });
   const [mounted, setMounted] = useState(false);
@@ -355,9 +367,11 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
 
     const cards: FloatingCard[] = mockCompounds.map((compound) => {
       let x: number, y: number, attempts = 0;
+      // Bias toward upper 70% so molecules don't cluster near the substance bar
+      const maxInitY = h * 0.7;
       do {
         x = padX + Math.random() * (w - padX * 2);
-        y = padY + Math.random() * (h - padY * 2);
+        y = padY + Math.random() * (maxInitY - padY);
         attempts++;
       } while (attempts < 50 && Math.abs(x - cx) < exW && Math.abs(y - cy) < exH);
 
@@ -515,25 +529,26 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
 
         const padX = CARD_W / 2 + 4;
         const padY = CARD_H / 2 + 4;
-        if (card.x < padX) { card.x = padX; card.vx *= -0.8; }
-        if (card.x > cw - padX) { card.x = cw - padX; card.vx *= -0.8; }
-        if (card.y < padY) { card.y = padY; card.vy *= -0.8; }
+        if (card.x < padX) { card.x = padX; card.vx *= -0.6; }
+        if (card.x > cw - padX) { card.x = cw - padX; card.vx *= -0.6; }
+        if (card.y < padY) { card.y = padY; card.vy = Math.abs(card.vy) * 0.5; } // bounce off ceiling
 
-        // Substance bar collision — jelly bounce!
+        // Substance bar collision — rubber ball bounce!
         const cardBottom = card.y + CARD_H / 2;
         if (cardBottom > barTop) {
           card.y = barTop - CARD_H / 2;
           const impactSpeed = Math.abs(card.vy);
-          card.vy *= -0.7; // bounce up
-          // Jelly squish — proportional to impact speed
-          const squishAmount = Math.min(0.4, impactSpeed * 0.8);
-          card.squishX = 1 + squishAmount;    // stretch wide
-          card.squishY = 1 - squishAmount * 0.6; // compress tall
+          // Rubber ball bounce — visible but not frantic
+          card.vy = -Math.max(impactSpeed * 0.95, 1.5);
+          // Jelly squish on impact
+          const squishAmount = Math.min(0.5, impactSpeed * 1.0);
+          card.squishX = 1 + squishAmount;
+          card.squishY = 1 - squishAmount * 0.7;
         }
 
         // Regular bottom boundary (fallback — use container height)
         const maxY = Math.min(ch - padY, barTop - CARD_H / 2);
-        if (card.y > maxY) { card.y = maxY; card.vy *= -0.8; }
+        if (card.y > maxY) { card.y = maxY; card.vy = -1.2; }
 
         // Center exclusion zone
         const relX = card.x - cx;
@@ -545,12 +560,18 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
           else card.vy += pushY * 0.04;
         }
 
-        card.vx += (Math.random() - 0.5) * 0.02;
-        card.vy += (Math.random() - 0.5) * 0.02;
-        const speed = Math.sqrt(card.vx ** 2 + card.vy ** 2);
-        if (speed > 0.35) { card.vx = (card.vx / speed) * 0.35; card.vy = (card.vy / speed) * 0.35; }
-        card.vx *= 0.997;
-        card.vy *= 0.997;
+        // Gentle gravity — pulls molecules down so they arc like rubber balls
+        card.vy += 0.006;
+
+        card.vx += (Math.random() - 0.5) * 0.012;
+        card.vy += (Math.random() - 0.5) * 0.01;
+        // Speed cap — higher for vertical to allow bounce arcs
+        const absVx = Math.abs(card.vx);
+        const absVy = Math.abs(card.vy);
+        if (absVx > 0.25) card.vx = Math.sign(card.vx) * 0.25;
+        if (absVy > 2.0) card.vy = Math.sign(card.vy) * 2.0;
+        card.vx *= 0.995;
+        card.vy *= 0.993;
 
         // Jelly squish decay — spring back to normal
         card.squishX += (1 - card.squishX) * 0.15;
@@ -702,23 +723,23 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
           className="rounded-md px-2 py-1.5 border max-w-[155px]"
           style={{
             backgroundColor: "rgba(6,9,15,0.94)",
-            borderColor: `${riskHex[hoveredCompound.risk_level]}25`,
+            borderColor: `${statusHex[hoveredCompound.legal_status_japan]}25`,
             boxShadow: `0 2px 10px rgba(0,0,0,0.5)`,
           }}
         >
           <div className="flex items-center gap-1 mb-0.5">
             <span
               className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: riskHex[hoveredCompound.risk_level] }}
+              style={{ backgroundColor: statusHex[hoveredCompound.legal_status_japan] }}
             />
             <span className="text-[10px] font-bold text-white/85">{hoveredCompound.name}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[8px] font-mono" style={{ color: `${riskHex[hoveredCompound.risk_level]}bb` }}>
-              {riskLabels[hoveredCompound.risk_level]}
+            <span className="text-[8px] font-mono" style={{ color: `${statusHex[hoveredCompound.legal_status_japan]}bb` }}>
+              {statusLabels[hoveredCompound.legal_status_japan]}
             </span>
             <span className="text-[7px] text-white/20">|</span>
-            <span className="text-[8px] text-white/35">{statusLabels[hoveredCompound.legal_status_japan]}</span>
+            <span className="text-[8px] text-white/35">{riskLabels[hoveredCompound.risk_level]}</span>
           </div>
           {formulaMap[hoveredCompound.id] && (
             <p className="text-[8px] font-mono text-white/20 mt-0.5">{formulaMap[hoveredCompound.id]}</p>
@@ -860,7 +881,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
 
       {/* Floating molecular structure nodes */}
       {mounted && mockCompounds.map((compound) => {
-        const hex = riskHex[compound.risk_level] || riskHex.medium;
+        const hex = statusHex[compound.legal_status_japan] || statusHex.unknown;
         const family = compound.chemical_family ?? "Other";
         const structure = familyStructures[family] || simpleChainStructure;
         const formula = formulaMap[compound.id];
@@ -911,7 +932,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
                   className="text-[6px] font-mono font-bold tracking-wider px-0.5 py-px rounded-sm"
                   style={{ color: hex, backgroundColor: `${hex}28`, textShadow: `0 0 4px ${hex}40` }}
                 >
-                  {riskLabels[compound.risk_level]}
+                  {statusLabels[compound.legal_status_japan]}
                 </span>
               </div>
 

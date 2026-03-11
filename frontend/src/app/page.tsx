@@ -21,11 +21,12 @@ export default function Page() {
     setTimeout(() => setTransitionState("singularity"), 700);
     setTimeout(() => setTransitionState("zoom"), 1400);
     setTimeout(() => setTransitionState("supernova"), 2100);
+    setTimeout(() => setTransitionState("warp"), 4300);
     setTimeout(() => {
       setTransitionState("navigate");
       // Full page navigation — avoids client-side mount conflicts
       window.location.href = "/universe";
-    }, 4400);
+    }, 6000);
   }, [transitionState]);
 
   return (

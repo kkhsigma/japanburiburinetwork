@@ -3,7 +3,7 @@
 // ============================================================
 
 // --- Black Hole Transition State Machine ---
-export type TransitionState = "idle" | "collapsing" | "singularity" | "zoom" | "supernova" | "navigate";
+export type TransitionState = "idle" | "collapsing" | "singularity" | "zoom" | "supernova" | "warp" | "navigate";
 
 // --- Legal State Machine (8 states) ---
 export type LegalStatus =
