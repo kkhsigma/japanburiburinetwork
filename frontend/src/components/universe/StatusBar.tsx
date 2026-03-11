@@ -68,7 +68,7 @@ export function StatusBar() {
       <div className="flex items-center justify-center gap-2 mt-2">
         <span className="h-px flex-1 bg-gradient-to-r from-transparent via-white/[0.04] to-transparent" />
         <span className="text-[8px] font-mono text-gray-600 tracking-widest">
-          LIVE MONITORING
+          ライブ監視中
         </span>
         <span className="h-px flex-1 bg-gradient-to-r from-transparent via-white/[0.04] to-transparent" />
       </div>

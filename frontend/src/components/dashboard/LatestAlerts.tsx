@@ -6,25 +6,25 @@ import type { AlertSeverity } from "@/types";
 
 const severityConfig: Record<AlertSeverity, { label: string; border: string; dot: string; badge: string }> = {
   critical: {
-    label: "CRITICAL",
+    label: "緊急",
     border: "border-l-red-500/80",
     dot: "bg-red-500",
     badge: "bg-red-500/15 text-red-400 border-red-500/25",
   },
   high: {
-    label: "HIGH",
+    label: "高",
     border: "border-l-orange-500/80",
     dot: "bg-orange-500",
     badge: "bg-orange-500/15 text-orange-400 border-orange-500/25",
   },
   medium: {
-    label: "MEDIUM",
+    label: "注意",
     border: "border-l-amber-500/80",
     dot: "bg-amber-500",
     badge: "bg-amber-500/15 text-amber-400 border-amber-500/25",
   },
   low: {
-    label: "LOW",
+    label: "低",
     border: "border-l-gray-600",
     dot: "bg-gray-500",
     badge: "bg-gray-500/15 text-gray-400 border-gray-500/20",

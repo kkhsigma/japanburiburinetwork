@@ -206,7 +206,7 @@ const WORLDS: WorldDef[] = [
   {
     id: "cannabis",
     label: "カンナビス",
-    sublabel: "Cannabis World",
+    sublabel: "カンナビス規制",
     position: [-9, 0.5, 3],
     radius: 1.4,
     glowColor: "#22c55e",
@@ -216,7 +216,7 @@ const WORLDS: WorldDef[] = [
   {
     id: "psychedelics",
     label: "サイケデリクス",
-    sublabel: "Psychedelics World",
+    sublabel: "サイケデリクス規制",
     position: [7, 2.8, -5],
     radius: 1.3,
     glowColor: "#a855f7",
@@ -226,7 +226,7 @@ const WORLDS: WorldDef[] = [
   {
     id: "others",
     label: "その他の物質",
-    sublabel: "Other Substances",
+    sublabel: "その他の規制物質",
     position: [8, -2.2, 2],
     radius: 1.15,
     glowColor: "#22d3ee",
@@ -977,155 +977,55 @@ function DebrisField({
   );
 }
 
-// ─── Floating Book (Vlog/Community) ─────────────────────
+// ─── Signal Beacon (Community / Blog) ───────────────────
 
 const BOOK_POSITION: [number, number, number] = [-7, -1.8, -5];
 
-function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
+function SignalBeacon({ onSelect }: { onSelect: (id: string) => void }) {
   const groupRef = useRef<THREE.Group>(null);
-  const bookRef = useRef<THREE.Group>(null);
-  const frontCoverRef = useRef<THREE.Group>(null);
+  const dishRef = useRef<THREE.Mesh>(null);
+  const blinkRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
-  const openAmount = useRef(0); // 0 = closed, 1 = open
 
-  const bookW = 1.9;
-  const bookH = 2.5;
-  const bookD = 0.45;
-  const coverThick = 0.05;
-  const openAngle = Math.PI * 0.55; // how far the front cover swings open
-
-  // Front cover geometry — pivoted at left edge (spine side)
-  const frontCoverGeo = useMemo(() => {
-    const geo = new THREE.BoxGeometry(bookW, bookH, coverThick);
-    geo.translate(bookW / 2, 0, 0); // pivot at left edge
-    return geo;
-  }, [bookW, bookH, coverThick]);
-
-  // Book cover texture - leather-like with gold lettering
-  const coverTexture = useMemo(() => {
-    const cvs = document.createElement("canvas");
-    cvs.width = 128;
-    cvs.height = 128;
-    const ctx = cvs.getContext("2d")!;
-    // Fast leather-like gradient instead of per-pixel noise
-    const grad = ctx.createLinearGradient(0, 0, 128, 128);
-    grad.addColorStop(0, "rgb(180, 85, 20)");
-    grad.addColorStop(0.3, "rgb(155, 68, 15)");
-    grad.addColorStop(0.6, "rgb(170, 78, 18)");
-    grad.addColorStop(1, "rgb(145, 62, 12)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 128, 128);
-    // Add subtle noise with random rects
-    for (let i = 0; i < 300; i++) {
-      const x = Math.random() * 128;
-      const y = Math.random() * 128;
-      ctx.fillStyle = `rgba(${Math.random() > 0.5 ? 255 : 0},${Math.random() > 0.5 ? 200 : 0},0,0.03)`;
-      ctx.fillRect(x, y, 2 + Math.random() * 4, 2 + Math.random() * 4);
-    }
-    ctx.strokeStyle = "rgba(212, 167, 45, 0.6)";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(8, 8, 112, 112);
-    ctx.strokeStyle = "rgba(212, 167, 45, 0.3)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(12, 12, 104, 104);
-    ctx.fillStyle = "rgba(245, 215, 120, 0.9)";
-    ctx.font = "bold 12px serif";
-    ctx.textAlign = "center";
-    ctx.fillText("コミュニティ", 64, 58);
-    ctx.fillText("& ブログ", 64, 76);
-    const tex = new THREE.CanvasTexture(cvs);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return tex;
-  }, []);
-
-  // Inner page texture (visible when open)
-  const pageTexture = useMemo(() => {
-    const cvs = document.createElement("canvas");
-    cvs.width = 256;
-    cvs.height = 320;
-    const ctx = cvs.getContext("2d")!;
-    ctx.fillStyle = "#f5f0e0";
-    ctx.fillRect(0, 0, 256, 320);
-    // Faint text lines
-    ctx.fillStyle = "rgba(80,60,40,0.15)";
-    for (let line = 0; line < 16; line++) {
-      const y = 24 + line * 18;
-      const w = 80 + hash(line * 7, line * 3) * 140;
-      ctx.fillRect(20, y, w, 2);
-    }
-    // Small decorative circle
-    ctx.strokeStyle = "rgba(180,150,80,0.2)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(128, 240, 30, 0, Math.PI * 2);
-    ctx.stroke();
-    const tex = new THREE.CanvasTexture(cvs);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return tex;
-  }, []);
-
-  // Page edge texture (side of pages block)
-  const pageEdgeTexture = useMemo(() => {
-    const cvs = document.createElement("canvas");
-    cvs.width = 128;
-    cvs.height = 128;
-    const ctx = cvs.getContext("2d")!;
-    ctx.fillStyle = "#f5f0e0";
-    ctx.fillRect(0, 0, 128, 128);
-    for (let y = 0; y < 128; y += 2) {
-      const shade = 220 + Math.random() * 20;
-      ctx.fillStyle = `rgb(${shade},${shade - 10},${shade - 25})`;
-      ctx.fillRect(0, y, 128, 1);
-    }
-    const tex = new THREE.CanvasTexture(cvs);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return tex;
-  }, []);
-
-  useFrame(({ clock }, delta) => {
+  useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
 
-    // Smooth open / close
-    const target = hovered ? 1 : 0;
-    openAmount.current += (target - openAmount.current) * Math.min(delta * 5, 1);
-
-    // Animate front cover — pivots open around the spine edge
-    if (frontCoverRef.current) {
-      frontCoverRef.current.rotation.y = -openAmount.current * openAngle;
-    }
-
-    // Gentle sway
-    if (bookRef.current) {
-      bookRef.current.rotation.y = Math.sin(t * 0.3 + 2.0) * 0.15;
-    }
-    // Bob + tilt
+    // Gentle bobbing
     if (groupRef.current) {
       groupRef.current.position.y = Math.sin(t * 0.6 + 5.5) * 0.2;
-      groupRef.current.rotation.z = Math.sin(t * 0.4 + 1.2) * 0.05;
-      groupRef.current.rotation.x = Math.sin(t * 0.3 + 3.0) * 0.03;
+      groupRef.current.rotation.z = Math.sin(t * 0.4 + 1.2) * 0.03;
+      groupRef.current.rotation.x = Math.sin(t * 0.3 + 3.0) * 0.02;
+    }
+
+    // Spinning dish
+    if (dishRef.current) {
+      dishRef.current.rotation.y = t * 0.5;
+    }
+
+    // Blinking light — pulse opacity
+    if (blinkRef.current) {
+      const mat = blinkRef.current.material as THREE.MeshBasicMaterial;
+      mat.opacity = 0.4 + Math.sin(t * 3.0) * 0.4 + Math.sin(t * 7.0) * 0.15;
     }
   });
 
-  const spineX = -bookW / 2;
-  const pageInset = 0.07;
-
   return (
     <group ref={groupRef}>
-      {/* Warm glow */}
+      {/* Soft glow atmosphere */}
       <mesh>
-        <sphereGeometry args={[2.8, 32, 32]} />
+        <sphereGeometry args={[2.2, 24, 24]} />
         <meshBasicMaterial
-          color={new THREE.Color(1.0, 0.7, 0.15)}
+          color={new THREE.Color(0.3, 0.6, 1.0)}
           transparent
-          opacity={0.035}
+          opacity={0.04}
           side={THREE.BackSide}
           toneMapped={false}
           depthWrite={false}
+          blending={THREE.AdditiveBlending}
         />
       </mesh>
 
       <group
-        ref={bookRef}
         onClick={(e) => {
           e.stopPropagation();
           onSelect("blog");
@@ -1139,69 +1039,100 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
           setHovered(false);
           document.body.style.cursor = "default";
         }}
-        scale={hovered ? 1.1 : 1}
-        rotation={[-0.5, 0, 0.08]}
+        scale={hovered ? 1.12 : 1}
       >
-        {/* Back cover (stays flat) */}
-        <mesh position={[0, 0, -bookD / 2 - coverThick / 2]}>
-          <boxGeometry args={[bookW, bookH, coverThick]} />
+        {/* Central cylinder body */}
+        <mesh position={[0, 0, 0]}>
+          <cylinderGeometry args={[0.25, 0.25, 1.5, 12]} />
           <meshStandardMaterial
-            color="#2d1408"
-            roughness={0.8}
-            metalness={0.05}
+            color="#1a2a3a"
+            roughness={0.3}
+            metalness={0.85}
           />
         </mesh>
 
-        {/* Pages block (stays with back cover) */}
-        <mesh position={[pageInset / 2, 0, 0]}>
-          <boxGeometry
-            args={[bookW - pageInset * 2, bookH - pageInset * 2, bookD]}
-          />
+        {/* Spinning dish / ring at top */}
+        <mesh ref={dishRef} position={[0, 0.9, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.45, 0.06, 8, 24]} />
           <meshStandardMaterial
-            map={pageEdgeTexture}
-            roughness={0.95}
-            metalness={0}
+            color="#4a7a9a"
+            roughness={0.25}
+            metalness={0.9}
+            emissive="#1a3a5a"
+            emissiveIntensity={0.3}
           />
         </mesh>
 
-        {/* Inner page face (visible when open) */}
-        <mesh position={[0, 0, bookD / 2 + 0.001]}>
-          <planeGeometry args={[bookW - pageInset * 2, bookH - pageInset * 2]} />
-          <meshStandardMaterial
-            map={pageTexture}
-            roughness={0.9}
-            metalness={0}
+        {/* Blinking light at very top */}
+        <mesh ref={blinkRef} position={[0, 1.1, 0]}>
+          <sphereGeometry args={[0.08, 12, 12]} />
+          <meshBasicMaterial
+            color={new THREE.Color(2.0, 0.6, 0.3)}
+            transparent
+            opacity={0.8}
+            toneMapped={false}
           />
         </mesh>
 
-        {/* Spine */}
-        <mesh position={[spineX - coverThick / 2, 0, 0]}>
-          <boxGeometry args={[coverThick, bookH, bookD + coverThick * 2]} />
-          <meshStandardMaterial
-            color="#3d1a0a"
-            roughness={0.75}
-            metalness={0.08}
-          />
-        </mesh>
-
-        {/* Front cover — hinged at spine, swings open on hover */}
-        <group ref={frontCoverRef} position={[spineX, 0, bookD / 2 + coverThick / 2]}>
-          <mesh geometry={frontCoverGeo}>
+        {/* Solar panel 1 — angled right */}
+        <group position={[0.5, 0.1, 0]} rotation={[0, 0, -0.4]}>
+          <mesh>
+            <boxGeometry args={[0.6, 0.02, 0.35]} />
             <meshStandardMaterial
-              map={coverTexture}
-              roughness={0.7}
-              metalness={0.1}
+              color="#1a2240"
+              roughness={0.4}
+              metalness={0.7}
+              emissive="#0a1530"
+              emissiveIntensity={0.2}
             />
           </mesh>
         </group>
+
+        {/* Solar panel 2 — angled left */}
+        <group position={[-0.5, 0.1, 0]} rotation={[0, 0, 0.4]}>
+          <mesh>
+            <boxGeometry args={[0.6, 0.02, 0.35]} />
+            <meshStandardMaterial
+              color="#1a2240"
+              roughness={0.4}
+              metalness={0.7}
+              emissive="#0a1530"
+              emissiveIntensity={0.2}
+            />
+          </mesh>
+        </group>
+
+        {/* Solar panel 3 — angled back */}
+        <group position={[0, 0.1, -0.5]} rotation={[0.4, 0, 0]}>
+          <mesh>
+            <boxGeometry args={[0.35, 0.02, 0.6]} />
+            <meshStandardMaterial
+              color="#1a2240"
+              roughness={0.4}
+              metalness={0.7}
+              emissive="#0a1530"
+              emissiveIntensity={0.2}
+            />
+          </mesh>
+        </group>
+
+        {/* Bottom cap / antenna base */}
+        <mesh position={[0, -0.85, 0]}>
+          <cylinderGeometry args={[0.15, 0.3, 0.2, 8]} />
+          <meshStandardMaterial
+            color="#2a3a4a"
+            roughness={0.35}
+            metalness={0.8}
+          />
+        </mesh>
       </group>
 
-      {/* Floating particles */}
-      <BookParticles />
+      {/* Orbiting signal particles */}
+      <SignalParticles />
 
       {/* Label */}
       <Html
-        position={[0, -2.3, 0]}
+        position={[0, -2.0, 0]}
         center
         style={{ pointerEvents: "none", whiteSpace: "nowrap" }}
       >
@@ -1228,7 +1159,7 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
               textShadow: "0 0 8px rgba(0,0,0,0.8)",
             }}
           >
-            Blog &amp; Community
+            ブログ &amp; 交流
           </div>
         </div>
       </Html>
@@ -1236,18 +1167,18 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
   );
 }
 
-function BookParticles() {
-  const count = 20;
+function SignalParticles() {
+  const count = 10;
   const pointsRef = useRef<THREE.Points>(null);
 
   const geo = useMemo(() => {
     const g = new THREE.BufferGeometry();
     const pos = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 1.5 + Math.random() * 1.2;
+      const a = (i / count) * Math.PI * 2;
+      const r = 1.2 + Math.random() * 0.6;
       pos[i * 3] = Math.cos(a) * r;
-      pos[i * 3 + 1] = (Math.random() - 0.5) * 2;
+      pos[i * 3 + 1] = (Math.random() - 0.5) * 1.0;
       pos[i * 3 + 2] = Math.sin(a) * r;
     }
     g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
@@ -1256,17 +1187,17 @@ function BookParticles() {
 
   useFrame(({ clock }) => {
     if (pointsRef.current) {
-      pointsRef.current.rotation.y = clock.getElapsedTime() * 0.08;
+      pointsRef.current.rotation.y = clock.getElapsedTime() * 0.15;
     }
   });
 
   return (
     <points ref={pointsRef} geometry={geo}>
       <pointsMaterial
-        size={0.06}
-        color={new THREE.Color(2, 1.5, 0.4)}
+        size={0.05}
+        color={new THREE.Color(0.5, 1.2, 2.0)}
         transparent
-        opacity={0.4}
+        opacity={0.5}
         sizeAttenuation
         toneMapped={false}
       />
@@ -1757,6 +1688,111 @@ function PulsingRing({ index }: { index: number }) {
   );
 }
 
+// ─── Orbital Paths ──────────────────────────────────────
+
+function OrbitPath({ target, color }: { target: [number, number, number]; color: string }) {
+  const lineRef = useRef<THREE.LineLoop>(null);
+
+  const geo = useMemo(() => {
+    const dist = Math.sqrt(target[0] ** 2 + target[2] ** 2);
+    const points: THREE.Vector3[] = [];
+    const segments = 96;
+    for (let i = 0; i <= segments; i++) {
+      const a = (i / segments) * Math.PI * 2;
+      points.push(new THREE.Vector3(Math.cos(a) * dist, 0, Math.sin(a) * dist));
+    }
+    return new THREE.BufferGeometry().setFromPoints(points);
+  }, [target]);
+
+  const mat = useMemo(() => new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.06, depthWrite: false }), [color]);
+
+  return <primitive ref={lineRef} object={new THREE.LineLoop(geo, mat)} />;
+}
+
+// ─── Ambient Nebula ─────────────────────────────────────
+
+function Nebula() {
+  const glowMap = useMemo(() => makeGlowMap(), []);
+
+  const nebulae = useMemo(() => [
+    { pos: [18, 8, -25] as [number, number, number], color: "#1a9a8a", scale: 22, opacity: 0.015 },
+    { pos: [-20, -5, -30] as [number, number, number], color: "#643cc8", scale: 28, opacity: 0.012 },
+    { pos: [5, 15, -40] as [number, number, number], color: "#2266aa", scale: 20, opacity: 0.01 },
+  ], []);
+
+  return (
+    <>
+      {nebulae.map((n, i) => (
+        <sprite key={i} position={n.pos} scale={[n.scale, n.scale, 1]}>
+          <spriteMaterial
+            map={glowMap}
+            color={n.color}
+            transparent
+            opacity={n.opacity}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+            toneMapped={false}
+          />
+        </sprite>
+      ))}
+    </>
+  );
+}
+
+// ─── Warp Streaks (camera travel effect) ────────────────
+
+function WarpStreaks({ active }: { active: boolean }) {
+  const count = 60;
+  const ref = useRef<THREE.Points>(null);
+  const { camera } = useThree();
+
+  const geo = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    const pos = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * 8;
+      pos[i * 3 + 1] = (Math.random() - 0.5) * 8;
+      pos[i * 3 + 2] = -Math.random() * 20;
+    }
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    return g;
+  }, []);
+
+  useFrame(() => {
+    if (!ref.current) return;
+    ref.current.visible = active;
+    if (!active) return;
+    // Follow camera
+    ref.current.position.copy(camera.position);
+    ref.current.rotation.copy(camera.rotation);
+    // Animate streaks forward
+    const positions = geo.attributes.position.array as Float32Array;
+    for (let i = 0; i < count; i++) {
+      positions[i * 3 + 2] += 0.8;
+      if (positions[i * 3 + 2] > 5) {
+        positions[i * 3 + 2] = -20;
+        positions[i * 3] = (Math.random() - 0.5) * 8;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 8;
+      }
+    }
+    geo.attributes.position.needsUpdate = true;
+  });
+
+  return (
+    <points ref={ref} geometry={geo} visible={false}>
+      <pointsMaterial
+        size={0.03}
+        color="#99ddff"
+        transparent
+        opacity={0.5}
+        sizeAttenuation
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </points>
+  );
+}
+
 // ─── Camera Controller ──────────────────────────────────
 
 function CameraController({
@@ -1770,12 +1806,14 @@ function CameraController({
   const startPos = useRef<THREE.Vector3 | null>(null);
   const progress = useRef(0);
   const arrived = useRef(false);
+  const phase = useRef<"accelerate" | "cruise" | "decelerate">("accelerate");
 
   useFrame(() => {
     if (!travelTarget) {
       startPos.current = null;
       progress.current = 0;
       arrived.current = false;
+      phase.current = "accelerate";
       return;
     }
 
@@ -1790,27 +1828,54 @@ function CameraController({
       : WORLDS.find((w) => w.id === travelTarget)?.position;
     if (!worldPos) return;
 
-    progress.current = Math.min(progress.current + 0.012, 1);
+    // Three-phase speed: slow start → fast cruise → slow approach
+    const p = progress.current;
+    let speed: number;
+    if (p < 0.15) {
+      speed = 0.004 + easeOutCubic(p / 0.15) * 0.016; // accelerate
+      phase.current = "accelerate";
+    } else if (p < 0.7) {
+      speed = 0.02; // cruise
+      phase.current = "cruise";
+    } else {
+      speed = 0.02 * (1 - easeOutCubic((p - 0.7) / 0.3) * 0.85); // decelerate
+      phase.current = "decelerate";
+    }
+    progress.current = Math.min(progress.current + speed, 1);
     const ease = easeInOutCubic(progress.current);
 
     const dest = new THREE.Vector3(...worldPos);
     const offset = dest
       .clone()
       .normalize()
-      .multiplyScalar(4);
-    offset.y += 2;
+      .multiplyScalar(3.5);
+    offset.y += 1.5;
     const target = dest.clone().add(offset);
 
     camera.position.lerpVectors(startPos.current, target, ease);
+
+    // FOV zoom effect — widen during cruise, narrow on approach
+    const fovBase = 45;
+    let fovOffset = 0;
+    if (p > 0.1 && p < 0.75) {
+      const fp = (p - 0.1) / 0.65;
+      fovOffset = Math.sin(fp * Math.PI) * 15; // widen up to +15 degrees
+    }
+    (camera as THREE.PerspectiveCamera).fov = fovBase + fovOffset;
+    (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+
     const look = new THREE.Vector3().lerpVectors(
       new THREE.Vector3(0, 0, 0),
       dest,
-      ease
+      Math.min(ease * 1.3, 1) // look ahead faster than movement
     );
     camera.lookAt(look);
 
     if (progress.current >= 1) {
       arrived.current = true;
+      // Reset FOV
+      (camera as THREE.PerspectiveCamera).fov = fovBase;
+      (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
       onArrive();
     }
   });
@@ -1921,6 +1986,9 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
         speed={isLight ? 0.6 : 0.4}
       />
 
+      {/* Ambient nebula clouds */}
+      <Nebula />
+
       {/* Mark intro as seen once animation completes */}
       {!skipIntro && <IntroMarker />}
 
@@ -1936,6 +2004,7 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
         const planetDelay = pathDelay + pathDuration * 0.85; // planet appears near end of path growth
         return (
           <Fragment key={w.id}>
+            <OrbitPath target={w.position} color={w.glowColor} />
             <GoldenPath start={ORIGIN} end={w.position} delay={pathDelay} growDuration={pathDuration} />
             <NovaSpawn
               delay={planetDelay}
@@ -1961,11 +2030,14 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
               color="#d4a72d"
               position={BOOK_POSITION}
             >
-              <FloatingBook onSelect={handleSelect} />
+              <SignalBeacon onSelect={handleSelect} />
             </NovaSpawn>
           </>
         );
       })()}
+
+      {/* Warp streaks during camera travel */}
+      <WarpStreaks active={!!travelTarget} />
 
       {/* Camera travel (only active when travelTarget set) */}
       {travelTarget && (
