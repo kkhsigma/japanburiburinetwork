@@ -327,6 +327,18 @@ const EXCLUSION_W = 500;
 const EXCLUSION_H = 350;
 const BAR_HEIGHT = 70; // substance bar collision zone from bottom
 
+// ── Compare Row helper ──
+function CompareRow({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[7px] font-mono text-white/25">{label}</span>
+      <span className="text-[9px] font-mono font-medium" style={{ color: color || "rgba(255,255,255,0.6)" }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
 interface FloatingCardsBgProps {
   transitionState?: TransitionState;
 }
@@ -357,7 +369,16 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
   const [filterMode, setFilterMode] = useState<FilterMode>("none");
   const [filterValue, setFilterValue] = useState<FilterValue | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const tooltipPos = useRef({ x: 0, y: 0 });
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= 3) return prev; // max 3
+      return [...prev, id];
+    });
+  }, []);
 
   transitionRef.current = transitionState;
   filterRef.current = { mode: filterMode, value: filterValue };
@@ -1089,14 +1110,26 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
               tooltipPos.current = { x: e.clientX, y: e.clientY };
             }}
             onMouseLeave={() => setHoveredId(null)}
+            onClick={() => toggleSelect(compound.id)}
           >
             {/* The card IS the molecular structure */}
             <div className="relative">
+              {/* Selection ring */}
+              {selectedIds.includes(compound.id) && (
+                <div
+                  className="absolute -inset-1.5 rounded-2xl pointer-events-none"
+                  style={{
+                    border: `2px solid ${hex}`,
+                    boxShadow: `0 0 12px ${hex}60, inset 0 0 8px ${hex}20`,
+                    animation: "pulse 2s ease-in-out infinite",
+                  }}
+                />
+              )}
               {/* Soft glow behind the structure */}
               <div
                 className="absolute inset-0 rounded-2xl"
                 style={{
-                  background: `radial-gradient(ellipse at 50% 50%, ${hex}12 0%, transparent 70%)`,
+                  background: `radial-gradient(ellipse at 50% 50%, ${hex}${selectedIds.includes(compound.id) ? '25' : '12'} 0%, transparent 70%)`,
                 }}
               />
 
@@ -1141,6 +1174,92 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         );
       })}
     </div>
+
+    {/* ── Comparison Panel ── slides up when 2+ molecules selected */}
+    {selectedIds.length >= 2 && (
+      <div
+        className="fixed bottom-0 left-0 right-0 z-[60] animate-slideUp"
+        style={{
+          background: "linear-gradient(180deg, rgba(6,9,15,0.97) 0%, rgba(6,9,15,0.99) 100%)",
+          borderTop: "1px solid rgba(255,255,255,0.08)",
+          backdropFilter: "blur(24px)",
+          boxShadow: "0 -8px 40px rgba(0,0,0,0.5), 0 0 30px rgba(26,154,138,0.06)",
+        }}
+      >
+        {/* Header row */}
+        <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono font-bold text-[#1a9a8a]">比較モード</span>
+            <span className="text-[9px] font-mono text-white/30">{selectedIds.length}/3 選択</span>
+          </div>
+          <button
+            onClick={() => setSelectedIds([])}
+            className="text-[9px] font-mono text-white/40 hover:text-white/80 px-2 py-1 rounded hover:bg-white/[0.04] transition-colors cursor-pointer"
+          >
+            クリア ✕
+          </button>
+        </div>
+
+        {/* Comparison grid */}
+        <div className="px-4 py-3 overflow-x-auto">
+          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${selectedIds.length}, minmax(140px, 1fr))` }}>
+            {selectedIds.map((id) => {
+              const c = mockCompounds.find((m) => m.id === id);
+              if (!c) return null;
+              const cHex = statusHex[c.legal_status_japan];
+              return (
+                <div
+                  key={id}
+                  className="rounded-xl p-3 space-y-2"
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.02)",
+                    border: `1px solid ${cHex}30`,
+                  }}
+                >
+                  {/* Name + remove */}
+                  <div className="flex items-start justify-between gap-1">
+                    <div>
+                      <div className="text-[11px] font-bold text-white/90">{c.name}</div>
+                      {c.aliases?.[0] && (
+                        <div className="text-[8px] font-mono text-white/30 truncate">{c.aliases[0]}</div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => toggleSelect(id)}
+                      className="text-[9px] text-white/20 hover:text-white/60 cursor-pointer shrink-0 mt-0.5"
+                    >✕</button>
+                  </div>
+
+                  {/* Status badge */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cHex, boxShadow: `0 0 6px ${cHex}80` }} />
+                    <span className="text-[9px] font-mono font-bold" style={{ color: cHex }}>
+                      {statusLabels[c.legal_status_japan]}
+                    </span>
+                  </div>
+
+                  {/* Data rows */}
+                  <div className="space-y-1.5">
+                    <CompareRow label="リスク" value={riskLabels[c.risk_level]} color={riskHex[c.risk_level]} />
+                    <CompareRow label="分類" value={c.chemical_family || "—"} />
+                    <CompareRow label="種別" value={c.natural_or_synthetic === "natural" ? "天然" : c.natural_or_synthetic === "synthetic" ? "合成" : "—"} />
+                    <CompareRow label="更新日" value={c.legal_status_updated_at?.slice(0, 10) || "—"} />
+                  </div>
+
+                  {/* Effects summary */}
+                  <div className="pt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                    <div className="text-[7px] font-mono text-white/25 mb-0.5">概要</div>
+                    <div className="text-[8px] text-white/50 leading-relaxed line-clamp-3">
+                      {c.effects_summary || "—"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }
