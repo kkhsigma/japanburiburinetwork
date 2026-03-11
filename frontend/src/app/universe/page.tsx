@@ -29,7 +29,21 @@ export default function UniversePage() {
     }
     // Fade out the entry overlay after mount
     const timer = setTimeout(() => setEntryFade(false), 100);
-    return () => clearTimeout(timer);
+
+    // Force canvas remount when restored from bfcache (browser back button)
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        setCanvasKey((k) => k + 1);
+        setEntryFade(true);
+        setTimeout(() => setEntryFade(false), 100);
+      }
+    };
+    window.addEventListener("pageshow", onPageShow);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("pageshow", onPageShow);
+    };
   }, []);
 
   const handleToggleTheme = useCallback(() => {
