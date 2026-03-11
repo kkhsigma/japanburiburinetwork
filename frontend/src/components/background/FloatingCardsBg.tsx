@@ -890,7 +890,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
           <div
             key={compound.id}
             ref={(el) => setCardRef(compound.id, el)}
-            className="absolute will-change-transform pointer-events-auto"
+            className="absolute will-change-transform pointer-events-none [@media(hover:hover)]:pointer-events-auto"
             style={{ width: CARD_W, opacity: 0, zIndex: 2 }}
             onMouseEnter={(e) => {
               tooltipPos.current = { x: e.clientX, y: e.clientY };
