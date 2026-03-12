@@ -3671,21 +3671,33 @@ const CLUSTER_STAR_FRAG = /* glsl */ `
     vec2 center = gl_PointCoord - 0.5;
     float dist = length(center);
 
-    // Sharp exponential core - crisp pinpoint like galaxy stars
-    float core = exp(-dist * dist * 45.0);
+    // ULTRA SHARP exponential core - crisp pinpoint
+    float core = exp(-dist * dist * 120.0);
 
-    // Tiny diffraction spikes for bright stars
+    // Add a bright concentrated center for extra sharpness
+    float hotCenter = exp(-dist * dist * 400.0) * 0.6;
+
+    // Prominent diffraction spikes for all visible stars
     float spikes = 0.0;
-    if (vBrightness > 0.7) {
-      float spike1 = exp(-abs(center.x) * 25.0) * exp(-abs(center.y) * 4.0);
-      float spike2 = exp(-abs(center.y) * 25.0) * exp(-abs(center.x) * 4.0);
-      spikes = (spike1 + spike2) * 0.25 * (vBrightness - 0.7) * 3.33;
+    if (vBrightness > 0.5) {
+      float spikeIntensity = (vBrightness - 0.5) * 2.0;
+      float spike1 = exp(-abs(center.x) * 60.0) * exp(-abs(center.y) * 6.0);
+      float spike2 = exp(-abs(center.y) * 60.0) * exp(-abs(center.x) * 6.0);
+      // Add diagonal spikes for bright stars
+      float diag1 = exp(-abs(center.x - center.y) * 45.0) * exp(-abs(center.x + center.y) * 8.0);
+      float diag2 = exp(-abs(center.x + center.y) * 45.0) * exp(-abs(center.x - center.y) * 8.0);
+      spikes = (spike1 + spike2) * 0.4 * spikeIntensity;
+      if (vBrightness > 0.8) {
+        spikes += (diag1 + diag2) * 0.15 * (vBrightness - 0.8) * 5.0;
+      }
     }
 
-    float alpha = clamp(core + spikes, 0.0, 1.0);
-    if (alpha < 0.01) discard;
+    float intensity = core + hotCenter + spikes;
+    float alpha = clamp(intensity, 0.0, 1.0);
+    if (alpha < 0.008) discard;
 
-    gl_FragColor = vec4(vColor * (core + spikes * 0.8), alpha);
+    // Boost brightness
+    gl_FragColor = vec4(vColor * intensity * 1.4, alpha);
   }
 `;
 
@@ -3713,11 +3725,14 @@ const DUST_FRAG = /* glsl */ `
     vec2 center = gl_PointCoord - 0.5;
     float dist = length(center);
 
-    // Soft gaussian falloff for dust
-    float alpha = exp(-dist * dist * 8.0) * vOpacity;
-    if (alpha < 0.005) discard;
+    // Sharper dust with bright core
+    float core = exp(-dist * dist * 25.0);
+    float glow = exp(-dist * dist * 8.0) * 0.4;
+    float alpha = (core + glow) * vOpacity;
+    if (alpha < 0.003) discard;
 
-    gl_FragColor = vec4(vColor, alpha);
+    // Boost color intensity
+    gl_FragColor = vec4(vColor * (1.0 + core * 0.5), alpha);
   }
 `;
 
@@ -3745,14 +3760,17 @@ const COMET_FRAG = /* glsl */ `
     vec2 center = gl_PointCoord - 0.5;
     float dist = length(center);
 
-    // Sharp head, fading tail
-    float headIntensity = 1.0 - vTrailPos;
-    float alpha = exp(-dist * dist * (15.0 + vTrailPos * 20.0)) * headIntensity;
-    if (alpha < 0.01) discard;
+    // Ultra sharp head, crisp fading tail
+    float headIntensity = 1.0 - vTrailPos * 0.85;
+    float sharpness = 50.0 + vTrailPos * 80.0;
+    float core = exp(-dist * dist * sharpness);
+    float hotSpot = exp(-dist * dist * 200.0) * (1.0 - vTrailPos);
+    float alpha = (core + hotSpot * 0.5) * headIntensity;
+    if (alpha < 0.008) discard;
 
-    // Brighter blue-white at head, fading cyan in tail
-    vec3 col = mix(vec3(0.9, 0.95, 1.0), vec3(0.5, 0.8, 1.0), vTrailPos);
-    gl_FragColor = vec4(col * headIntensity * 1.5, alpha);
+    // Bright blue-white at head, fading to cyan
+    vec3 col = mix(vec3(1.0, 1.0, 1.0), vec3(0.6, 0.85, 1.0), vTrailPos);
+    gl_FragColor = vec4(col * headIntensity * 1.8, alpha);
   }
 `;
 
