@@ -2054,9 +2054,9 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
       {/* Light rays (shooting star style) getting sucked into the book */}
       <group ref={raysGroupRef}>
         {rayGeos.map((geo, idx) => (
-          <line key={idx} geometry={geo}>
+          <lineSegments key={idx} geometry={geo}>
             <primitive object={rayMats[idx]} attach="material" />
-          </line>
+          </lineSegments>
         ))}
       </group>
 
