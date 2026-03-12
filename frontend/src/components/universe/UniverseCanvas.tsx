@@ -1572,16 +1572,12 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
 
     // Helper to create nub (outward bump)
     const addNub = (shape: THREE.Shape, x1: number, y1: number, x2: number, y2: number, outX: number, outY: number) => {
-      const mx = (x1 + x2) / 2;
-      const my = (y1 + y2) / 2;
       shape.lineTo(x1, y1);
       shape.bezierCurveTo(x1 + outX, y1 + outY, x2 + outX, y2 + outY, x2, y2);
     };
 
     // Helper to create hole (inward indent)
     const addHole = (shape: THREE.Shape, x1: number, y1: number, x2: number, y2: number, inX: number, inY: number) => {
-      const mx = (x1 + x2) / 2;
-      const my = (y1 + y2) / 2;
       shape.lineTo(x1, y1);
       shape.bezierCurveTo(x1 - inX * 0.8, y1 - inY * 0.8, x2 - inX * 0.8, y2 - inY * 0.8, x2, y2);
     };
@@ -1650,12 +1646,6 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
 
     return geos;
   }, []);
-
-  // Assign random shape to each piece
-  const puzzleShapeIndices = useMemo(() => {
-    return Array.from({ length: puzzleCount }, () => Math.floor(Math.random() * 4));
-  }, []);
-
 
   // Glowing material for puzzle pieces - emissive + lit by point light
   const puzzleGlowMaterial = useMemo(() => {
