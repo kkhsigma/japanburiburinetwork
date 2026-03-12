@@ -1378,99 +1378,6 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
   const spineMaterial = useLeatherMaterial("#251030", "#351545");
   const pagesMaterial = usePagesMaterial();
 
-  // Wormhole portal shader - swirling vortex effect
-  const wormholeRef = useRef<THREE.Mesh>(null);
-  const wormholeUniforms = useMemo(() => ({
-    uTime: { value: 0 },
-    uIntensity: { value: 0 },
-  }), []);
-
-  const wormholeMaterial = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      uniforms: wormholeUniforms,
-      vertexShader: /* glsl */ `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: /* glsl */ `
-        uniform float uTime;
-        uniform float uIntensity;
-        varying vec2 vUv;
-
-        void main() {
-          vec2 center = vec2(0.5, 0.5);
-          vec2 uv = vUv - center;
-
-          // Use elliptical distance for rectangular shape
-          vec2 scaled = uv * vec2(1.0, 1.25); // Adjust for aspect ratio
-          float dist = length(scaled);
-          float angle = atan(uv.y, uv.x);
-
-          // Swirling vortex - faster and more dramatic
-          float spiral = angle + dist * 12.0 - uTime * 4.0;
-          float arms = sin(spiral * 6.0) * 0.5 + 0.5;
-
-          // Multiple spiral layers
-          float spiral2 = angle - dist * 8.0 + uTime * 2.5;
-          float arms2 = sin(spiral2 * 4.0) * 0.5 + 0.5;
-
-          // Event horizon - rectangular fade
-          vec2 edgeDist = abs(uv) * 2.0;
-          float rectDist = max(edgeDist.x, edgeDist.y);
-          float core = smoothstep(1.0, 0.0, rectDist);
-          float ring = smoothstep(0.8, 0.5, rectDist) * smoothstep(0.2, 0.4, rectDist);
-
-          // Pulsing energy waves
-          float pulse = sin(uTime * 5.0 - dist * 15.0) * 0.4 + 0.6;
-          float pulse2 = sin(uTime * 3.0 + dist * 10.0) * 0.3 + 0.7;
-
-          // Color gradient - bright golden core to warm amber edge
-          vec3 coreColor = vec3(1.0, 0.95, 0.7) * 2.5;
-          vec3 midColor = vec3(1.0, 0.7, 0.3) * 2.0;
-          vec3 edgeColor = vec3(0.9, 0.5, 0.1);
-
-          vec3 color = mix(edgeColor, midColor, core);
-          color = mix(color, coreColor, core * core * core);
-
-          // Add spiral arms - layered golden
-          color += arms * ring * vec3(1.0, 0.8, 0.4) * 1.2;
-          color += arms2 * ring * vec3(1.0, 0.7, 0.3) * 0.6;
-
-          // Bright center vortex
-          float centerGlow = smoothstep(0.3, 0.0, dist) * pulse;
-          color += centerGlow * vec3(2.0, 1.5, 1.0);
-
-          // Energy tendrils
-          float tendril = sin(angle * 8.0 + uTime * 6.0 + dist * 20.0);
-          tendril = pow(max(0.0, tendril), 4.0) * ring * pulse2;
-          color += tendril * vec3(1.0, 0.7, 0.3) * 1.5;
-
-          // Sparkles and stars
-          float sparkle = fract(sin(dot(uv * 80.0, vec2(12.9898, 78.233)) + uTime * 2.0) * 43758.5453);
-          sparkle = pow(sparkle, 25.0) * core * 4.0;
-          color += sparkle * vec3(1.0, 0.95, 0.8);
-
-          // Edge glow - warm golden
-          float edgeGlow = smoothstep(1.0, 0.7, rectDist) * (1.0 - smoothstep(0.7, 0.5, rectDist));
-          color += edgeGlow * vec3(1.0, 0.6, 0.2) * pulse * 0.8;
-
-          // Alpha - visible across the page
-          float alpha = core * uIntensity;
-          alpha = max(alpha, edgeGlow * 0.5 * uIntensity);
-
-          gl_FragColor = vec4(color * 1.3, alpha);
-        }
-      `,
-      transparent: true,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-  }, [wormholeUniforms]);
-
   // Front cover geometry (pivots at spine)
   const frontCoverGeo = useMemo(() => {
     const geo = new THREE.BoxGeometry(bookW, bookH, coverThick, 8, 8, 1);
@@ -1760,10 +1667,6 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
       pagesMaterial.uniforms.uTime.value = t;
       pagesMaterial.uniforms.uOpenAmount.value = openAmount.current;
     }
-
-    // Update wormhole portal - only visible when book is open
-    wormholeUniforms.uTime.value = t;
-    wormholeUniforms.uIntensity.value = openAmount.current;
 
     // Update orbiting puzzle pieces - absorption when passing in front of open page
     if (openAmount.current > 0.1) {
@@ -4719,7 +4622,7 @@ interface MomentumOrbitControlsProps {
 
 function MomentumOrbitControls({ enabled, travelTarget }: MomentumOrbitControlsProps) {
   const { camera } = useThree();
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<React.ElementRef<typeof OrbitControls>>(null);
   const isDragging = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
   const lastTime = useRef(0);
@@ -5006,7 +4909,7 @@ function CameraReset() {
   return null;
 }
 
-function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"; skipIntro?: boolean }) {
+function Scene({ skipIntro = false }: { theme?: "dark" | "light"; skipIntro?: boolean }) {
   const [travelTarget, setTravelTarget] = useState<string | null>(null);
   const handleSelect = (id: string) => {
     if (!travelTarget) setTravelTarget(id);

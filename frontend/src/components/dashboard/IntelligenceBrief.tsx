@@ -276,7 +276,6 @@ function SubstanceCard({
 
 export function IntelligenceBrief({ theme = "dark" }: IntelligenceBriefProps) {
   const styles = useThemeStyles(theme);
-  const isDark = theme === "dark";
 
   // Mock data - would come from API in production
   const metrics: MetricCard[] = [
