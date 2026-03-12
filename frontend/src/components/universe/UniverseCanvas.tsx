@@ -3683,7 +3683,7 @@ function DistantGalaxies() {
     const rand = clusterRandom(777);
     const result: MiniGalaxyProps[] = [];
 
-    // Reddish color palettes
+    // Expanded reddish color palette
     const redColors: [number, number, number][] = [
       [1.0, 0.4, 0.3],   // Bright red-orange
       [1.0, 0.3, 0.35],  // Deep red
@@ -3695,32 +3695,94 @@ function DistantGalaxies() {
       [1.0, 0.6, 0.5],   // Light coral
       [0.95, 0.4, 0.45], // Rose red
       [1.0, 0.5, 0.35],  // Tangerine red
+      [0.92, 0.35, 0.3], // Brick red
+      [1.0, 0.45, 0.55], // Pink-red
+      [0.88, 0.4, 0.32], // Terra cotta
+      [1.0, 0.38, 0.42], // Raspberry
+      [0.95, 0.55, 0.5], // Dusty rose
+      [1.0, 0.32, 0.28], // Scarlet
+      [0.9, 0.5, 0.45],  // Warm rose
+      [1.0, 0.42, 0.38], // Vermillion
+      [0.85, 0.38, 0.35], // Maroon light
+      [0.98, 0.48, 0.4],  // Peach red
     ];
 
-    for (let i = 0; i < 10; i++) {
-      // Distribute around the universe - far from center
+    // Minimum distance between galaxies
+    const minDistance = 45;
+    const placedPositions: [number, number, number][] = [];
+
+    // Helper to check if position is far enough from all others
+    const isFarEnough = (pos: [number, number, number]): boolean => {
+      for (const placed of placedPositions) {
+        const dx = pos[0] - placed[0];
+        const dy = pos[1] - placed[1];
+        const dz = pos[2] - placed[2];
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist < minDistance) return false;
+      }
+      return true;
+    };
+
+    // Target number of galaxies
+    const targetCount = 45;
+    let attempts = 0;
+    const maxAttempts = 500;
+
+    while (result.length < targetCount && attempts < maxAttempts) {
+      attempts++;
+
+      // Distribute throughout the entire universe volume
+      // Use multiple distance ranges for depth
+      const distanceRoll = rand();
+      let distance: number;
+      if (distanceRoll < 0.25) {
+        distance = 50 + rand() * 40; // Near-mid range (50-90)
+      } else if (distanceRoll < 0.55) {
+        distance = 90 + rand() * 50; // Mid range (90-140)
+      } else if (distanceRoll < 0.8) {
+        distance = 140 + rand() * 60; // Far range (140-200)
+      } else {
+        distance = 200 + rand() * 80; // Very far (200-280)
+      }
+
+      // Full spherical distribution
       const theta = rand() * Math.PI * 2;
       const phi = Math.acos(2 * rand() - 1);
-      const distance = 80 + rand() * 100; // Far away
 
       const x = Math.sin(phi) * Math.cos(theta) * distance;
-      const y = Math.sin(phi) * Math.sin(theta) * distance * 0.6 - 10; // Slightly flattened distribution
-      const z = Math.cos(phi) * distance - 50; // Push back
+      const y = Math.sin(phi) * Math.sin(theta) * distance * 0.7; // Slightly flattened
+      const z = Math.cos(phi) * distance - 30; // Slight offset back
 
-      // Varied sizes - small distant galaxies
-      const scale = 12 + rand() * 18;
+      const position: [number, number, number] = [x, y, z];
 
-      // Random rotation to face different directions
-      const rotX = (rand() - 0.5) * Math.PI * 0.8;
-      const rotY = (rand() - 0.5) * Math.PI * 0.8;
+      // Check minimum distance from other galaxies
+      if (!isFarEnough(position)) continue;
+
+      // Also avoid center area where main galaxy and planets are
+      const centerDist = Math.sqrt(x * x + y * y + (z + 30) * (z + 30));
+      if (centerDist < 40) continue;
+
+      placedPositions.push(position);
+
+      // Size varies with distance - farther = smaller appearance
+      const baseScale = 8 + rand() * 14;
+      const distanceFactor = Math.max(0.5, 1.0 - (distance - 50) / 300);
+      const scale = baseScale * (0.8 + distanceFactor * 0.5);
+
+      // Random rotation
+      const rotX = (rand() - 0.5) * Math.PI * 0.9;
+      const rotY = (rand() - 0.5) * Math.PI * 0.9;
       const rotZ = rand() * Math.PI * 2;
 
+      // Pick color from palette
+      const colorIndex = Math.floor(rand() * redColors.length);
+
       result.push({
-        position: [x, y, z],
+        position,
         scale,
         rotation: [rotX, rotY, rotZ],
-        colorTint: redColors[i],
-        seed: i * 17 + 3,
+        colorTint: redColors[colorIndex],
+        seed: result.length * 23 + 7,
       });
     }
 
