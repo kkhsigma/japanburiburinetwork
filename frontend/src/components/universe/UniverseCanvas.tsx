@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo, useState, useEffect, createContext, useContext, Fragment, Suspense } from "react";
+import { useRef, useMemo, useState, useEffect, createContext, useContext, Fragment, Suspense, useCallback } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, Stars, Text, Billboard } from "@react-three/drei";
 import * as THREE from "three";
@@ -8,6 +8,123 @@ import { mockCompounds } from "@/lib/mock-data";
 
 // ─── Intro Animation Context ────────────────────────────
 const IntroContext = createContext({ skipIntro: false });
+
+// ─── Graphics Quality Context ───────────────────────────
+type QualityLevel = "auto" | "low" | "high";
+interface QualityContextType {
+  quality: QualityLevel;
+  effectiveQuality: "low" | "high";
+  setQuality: (q: QualityLevel) => void;
+  deviceInfo: {
+    cores: number;
+    memory: number | null;
+    gpu: string;
+    isMobile: boolean;
+    isHighEnd: boolean;
+  };
+}
+
+const QualityContext = createContext<QualityContextType>({
+  quality: "auto",
+  effectiveQuality: "low",
+  setQuality: () => {},
+  deviceInfo: { cores: 4, memory: null, gpu: "unknown", isMobile: false, isHighEnd: false },
+});
+
+// Hook to detect device capabilities
+function useDeviceCapabilities() {
+  const [deviceInfo, setDeviceInfo] = useState({
+    cores: 4,
+    memory: null as number | null,
+    gpu: "unknown",
+    isMobile: false,
+    isHighEnd: false,
+  });
+
+  useEffect(() => {
+    // Detect CPU cores
+    const cores = navigator.hardwareConcurrency || 4;
+
+    // Detect device memory (Chrome/Edge only, capped at 8GB)
+    const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory || null;
+
+    // Detect mobile
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    ) || (typeof window !== "undefined" && window.innerWidth < 768);
+
+    // Detect GPU via WebGL
+    let gpu = "unknown";
+    try {
+      const canvas = document.createElement("canvas");
+      const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+      if (gl) {
+        const debugInfo = (gl as WebGLRenderingContext).getExtension("WEBGL_debug_renderer_info");
+        if (debugInfo) {
+          gpu = (gl as WebGLRenderingContext).getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || "unknown";
+        }
+      }
+    } catch {
+      gpu = "unknown";
+    }
+
+    // Determine if high-end device
+    // High-end criteria:
+    // - 8+ cores OR
+    // - 8GB+ memory (if available) OR
+    // - High-end GPU keywords (NVIDIA RTX, AMD RX 6000+, Apple M1+, etc.)
+    const highEndGpuKeywords = [
+      "RTX", "GTX 10", "GTX 16", "GTX 20", "GTX 30", "GTX 40",
+      "RX 5", "RX 6", "RX 7", "Radeon Pro",
+      "Apple M1", "Apple M2", "Apple M3", "Apple M4",
+      "Intel Iris Xe", "Intel Arc",
+      "Quadro", "Tesla", "A100", "H100"
+    ];
+
+    const hasHighEndGpu = highEndGpuKeywords.some(keyword =>
+      gpu.toLowerCase().includes(keyword.toLowerCase())
+    );
+
+    const isHighEnd = !isMobile && (
+      cores >= 8 ||
+      (memory !== null && memory >= 8) ||
+      hasHighEndGpu
+    );
+
+    setDeviceInfo({
+      cores,
+      memory,
+      gpu,
+      isMobile,
+      isHighEnd,
+    });
+  }, []);
+
+  return deviceInfo;
+}
+
+// Quality Provider Component
+function QualityProvider({ children }: { children: React.ReactNode }) {
+  const [quality, setQuality] = useState<QualityLevel>("auto");
+  const deviceInfo = useDeviceCapabilities();
+
+  const effectiveQuality = useMemo(() => {
+    if (quality === "auto") {
+      return deviceInfo.isHighEnd ? "high" : "low";
+    }
+    return quality;
+  }, [quality, deviceInfo.isHighEnd]);
+
+  return (
+    <QualityContext.Provider value={{ quality, effectiveQuality, setQuality, deviceInfo }}>
+      {children}
+    </QualityContext.Provider>
+  );
+}
+
+function useQuality() {
+  return useContext(QualityContext);
+}
 
 // ─── Procedural Noise ───────────────────────────────────
 
@@ -205,8 +322,8 @@ interface WorldDef {
 const WORLDS: WorldDef[] = [
   {
     id: "cannabis",
-    label: "Cannabis",
-    sublabel: "Cannabis Regulations",
+    label: "カンナビノイド",
+    sublabel: "規制動向モニター",
     position: [-9, 0.5, 3],
     radius: 1.4,
     glowColor: "#22c55e",
@@ -215,8 +332,8 @@ const WORLDS: WorldDef[] = [
   },
   {
     id: "psychedelics",
-    label: "Psychedelics",
-    sublabel: "Psychedelic Regulations",
+    label: "サイケデリクス",
+    sublabel: "規制動向モニター",
     position: [7, 2.8, -5],
     radius: 1.3,
     glowColor: "#a855f7",
@@ -225,8 +342,8 @@ const WORLDS: WorldDef[] = [
   },
   {
     id: "others",
-    label: "Others",
-    sublabel: "Other Regulated Substances",
+    label: "成分比較",
+    sublabel: "比較ツール",
     position: [8, -2.2, 2],
     radius: 1.15,
     glowColor: "#22d3ee",
@@ -1955,7 +2072,7 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
                     outlineWidth={0.02}
           outlineColor="#000000"
         >
-          Community
+          コミュニティ
         </Text>
         <Text
           position={[0, -0.4, 0]}
@@ -1966,7 +2083,7 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
                     outlineWidth={0.01}
           outlineColor="#000000"
         >
-          Blog & Connect
+          ブログ・交流
         </Text>
       </Billboard>
     </group>
@@ -2671,17 +2788,209 @@ const GALAXY_FRAG = /* glsl */ `
   #define PI 3.14159265359
   #define TAU 6.28318530718
 
-  // === PREMIUM HASH FUNCTIONS ===
-  float hash(float n) { return fract(sin(n) * 43758.5453123); }
+  // === OPTIMIZED HASH FUNCTIONS ===
   float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   vec2 hash22(vec2 p) {
     p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
     return fract(sin(p) * 43758.5453);
   }
-  vec3 hash33(vec3 p) {
-    p = vec3(dot(p, vec3(127.1, 311.7, 74.7)),
-             dot(p, vec3(269.5, 183.3, 246.1)),
-             dot(p, vec3(113.5, 271.9, 124.6)));
+
+  // === OPTIMIZED NOISE (cubic interpolation) ===
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f); // Cubic instead of quintic
+    float a = hash2(i);
+    float b = hash2(i + vec2(1.0, 0.0));
+    float c = hash2(i + vec2(0.0, 1.0));
+    float d = hash2(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
+
+  // === OPTIMIZED FBM (4 octaves max) ===
+  float fbm4(vec2 p) {
+    float v = 0.0, a = 0.5;
+    mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+    for (int i = 0; i < 4; i++) {
+      v += a * noise(p);
+      p = rot * p * 2.0 + 100.0;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  // === OPTIMIZED STARFIELD (single cell check) ===
+  vec3 starFieldFast(vec2 uv, float density, float threshold) {
+    vec2 gv = fract(uv * density) - 0.5;
+    vec2 id = floor(uv * density);
+    vec3 starColor = vec3(0.0);
+
+    vec2 rand = hash22(id);
+    if (rand.x > threshold) {
+      vec2 starPos = rand - 0.5;
+      float d = length(gv - starPos);
+      float magnitude = (rand.x - threshold) / (1.0 - threshold);
+
+      // Sharp exponential star
+      float intensity = exp(-d * d * 800.0) * magnitude;
+
+      // Simple color based on hash
+      vec3 col = mix(vec3(1.0, 0.9, 0.8), vec3(0.8, 0.9, 1.0), rand.y);
+      starColor = col * intensity * 2.0;
+    }
+    return starColor;
+  }
+
+  // === OPTIMIZED SPIRAL ARM ===
+  float spiralArm(vec2 uv, float armCount, float tightness, float time, float armWidth) {
+    float dist = length(uv);
+    float angle = atan(uv.y, uv.x);
+    float spiral = angle + log(dist + 0.001) * tightness - time;
+    spiral = mod(spiral, TAU / armCount);
+    spiral = min(spiral, TAU / armCount - spiral);
+
+    float arm = smoothstep(armWidth, 0.0, spiral);
+    arm *= smoothstep(0.0, 0.08, dist);
+    arm *= smoothstep(0.48, 0.15, dist);
+    return arm;
+  }
+
+  // === GALAXY COLOR (simplified) ===
+  vec3 galaxyColor(float intensity, float temp) {
+    vec3 cream = vec3(1.0, 0.97, 0.92);
+    vec3 paleBlue = vec3(0.85, 0.9, 1.0);
+    vec3 gold = vec3(1.0, 0.9, 0.7);
+
+    vec3 baseCol = mix(paleBlue, cream, temp);
+    baseCol = mix(baseCol, gold, smoothstep(0.6, 1.0, temp));
+    return baseCol * intensity;
+  }
+
+  void main() {
+    vec2 uv = vUv - 0.5;
+    float dist = length(uv);
+
+    // Galaxy tilt
+    float tiltAngle = 1.3;
+    vec2 tiltedUV = vec2(uv.x, uv.y / cos(tiltAngle));
+
+    // Slow rotation
+    float rotAngle = uTime * 0.035;
+    mat2 rotMat = mat2(cos(rotAngle), -sin(rotAngle), sin(rotAngle), cos(rotAngle));
+    tiltedUV = rotMat * tiltedUV;
+
+    float tiltDist = length(tiltedUV);
+    float time = uTime * 0.015;
+
+    // === DIRECTIONAL LIGHTING (simplified) ===
+    vec2 lightDir = normalize(vec2(0.7, 0.5));
+    float facingLight = dot(normalize(tiltedUV + 0.001), lightDir) * 0.5 + 0.5;
+    float lightNoise = fbm4(tiltedUV * 8.0 + time * 0.3);
+    float lightVariation = 0.4 + facingLight * 0.6 * (0.7 + lightNoise * 0.5);
+
+    vec3 color = vec3(0.0);
+    float totalAlpha = 0.0;
+
+    // === BACKGROUND STARS (reduced to 3 layers) ===
+    vec3 bgStars = starFieldFast(uv * 0.8, 50.0, 0.88);
+    bgStars += starFieldFast(uv * 1.2 + 0.3, 80.0, 0.9);
+    bgStars += starFieldFast(uv * 0.5 + 0.7, 35.0, 0.86);
+    color += bgStars * 0.6;
+
+    // === GALACTIC CORE ===
+    float coreSize = 0.05;
+    float innerCore = exp(-tiltDist * tiltDist / (coreSize * coreSize * 0.5)) * 2.0;
+    float midCore = exp(-tiltDist * tiltDist / (coreSize * coreSize * 3.0)) * 0.4;
+    float outerCore = exp(-tiltDist * tiltDist / (coreSize * coreSize * 10.0)) * 0.15;
+
+    // Core texture (simplified)
+    float coreGrain = fbm4(tiltedUV * 80.0 + uTime * 0.03);
+    innerCore *= 0.75 + coreGrain * 0.35;
+
+    vec3 coreCol = mix(vec3(1.0, 0.92, 0.78), vec3(1.0, 0.96, 0.9), innerCore * 0.3);
+    coreCol *= lightVariation;
+    color += coreCol * (innerCore + midCore + outerCore);
+    totalAlpha += innerCore * 0.85 + midCore * 0.35 + outerCore * 0.15;
+
+    // === SPIRAL ARMS (reduced complexity) ===
+    float arm1 = spiralArm(tiltedUV, 2.0, 2.6, time, 0.35);
+    float arm2 = spiralArm(tiltedUV, 2.0, 2.6, time + PI, 0.35);
+    float arm3 = spiralArm(tiltedUV, 2.0, 3.0, time + PI * 0.5, 0.22) * 0.5;
+    float arm4 = spiralArm(tiltedUV, 2.0, 3.0, time + PI * 1.5, 0.22) * 0.5;
+
+    // Simplified filaments
+    float filaments = spiralArm(tiltedUV, 4.0, 3.8, time * 0.8, 0.1) * 0.15;
+    filaments += spiralArm(tiltedUV, 6.0, 4.2, time * 1.1 + 0.7, 0.07) * 0.1;
+
+    float totalArms = arm1 + arm2 + arm3 + arm4 + filaments;
+
+    // === ARM TEXTURE (reduced FBM calls) ===
+    float dustCoarse = fbm4(tiltedUV * 6.0 + time * 0.3) * 0.5;
+    float dustFine = fbm4(tiltedUV * 25.0 + time * 0.15) * 0.3;
+    float clusters = pow(fbm4(tiltedUV * 18.0 + time * 0.2), 2.0) * 1.2;
+
+    float armDensity = totalArms * (0.6 + dustCoarse + dustFine);
+    armDensity += clusters * totalArms * 0.4;
+
+    // Temperature gradient
+    float temp = clamp(1.0 - dist * 1.7, 0.0, 1.0);
+
+    // Arm coloring
+    vec3 armColor = galaxyColor(armDensity, temp);
+    armColor *= lightVariation * 1.1;
+
+    // Arm stars (single layer)
+    vec3 armStars = starFieldFast(tiltedUV * 1.5, 200.0, 0.92);
+    armColor += armStars * totalArms * 0.5;
+
+    color += armColor;
+    totalAlpha += armDensity * 0.7;
+
+    // === DARK DUST LANES (simplified) ===
+    float darkDust = fbm4(tiltedUV * 8.0 + time * 0.02);
+    darkDust = smoothstep(0.55, 0.75, darkDust);
+    color *= 1.0 - darkDust * totalArms * 0.25;
+
+    // === DIFFUSE LIGHT ===
+    float diffuse = exp(-dist * dist / 0.03) * 0.06;
+    color += vec3(0.95, 0.93, 0.9) * diffuse * lightVariation;
+
+    // === OUTER HALO ===
+    float halo = exp(-dist * dist / 0.07) * 0.03;
+    color += vec3(0.9, 0.92, 0.97) * halo;
+
+    // === FOREGROUND STARS (reduced to 2 layers) ===
+    vec3 fgStars = starFieldFast(uv + 0.5, 20.0, 0.76);
+    fgStars += starFieldFast(uv * 0.7 + 0.3, 15.0, 0.74);
+    color += fgStars * 0.8;
+
+    // === FINAL ADJUSTMENTS ===
+    float edgeFade = smoothstep(0.52, 0.28, dist);
+    color *= edgeFade;
+
+    // Contrast boost
+    color = pow(color, vec3(0.94));
+
+    // Final alpha
+    float alpha = clamp(totalAlpha + length(bgStars) * 0.4, 0.0, 1.0);
+    alpha *= edgeFade;
+
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
+
+// ─── HIGH QUALITY Galaxy Shader (for powerful devices) ───
+const GALAXY_FRAG_HQ = /* glsl */ `
+  uniform float uTime;
+  varying vec2 vUv;
+
+  #define PI 3.14159265359
+  #define TAU 6.28318530718
+
+  // === PREMIUM HASH FUNCTIONS ===
+  float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  vec2 hash22(vec2 p) {
+    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
     return fract(sin(p) * 43758.5453);
   }
 
@@ -2697,7 +3006,7 @@ const GALAXY_FRAG = /* glsl */ `
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
   }
 
-  // === MULTI-OCTAVE FBM VARIANTS ===
+  // === MULTI-OCTAVE FBM ===
   float fbm(vec2 p, int octaves) {
     float v = 0.0, a = 0.5;
     mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
@@ -2714,7 +3023,7 @@ const GALAXY_FRAG = /* glsl */ `
   float fbmUltra(vec2 p) {
     float v = 0.0, a = 0.5;
     mat2 rot = mat2(0.707, 0.707, -0.707, 0.707);
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 8; i++) {
       v += a * noise(p);
       p = rot * p * 2.2 + 37.0;
       a *= 0.47;
@@ -2722,30 +3031,13 @@ const GALAXY_FRAG = /* glsl */ `
     return v;
   }
 
-  // Ridged turbulence for filaments
-  float ridgedFbm(vec2 p) {
-    float v = 0.0, a = 0.5;
-    mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
-    for (int i = 0; i < 6; i++) {
-      float n = abs(noise(p) * 2.0 - 1.0);
-      n = 1.0 - n;
-      n = n * n;
-      v += a * n;
-      p = rot * p * 2.0 + 50.0;
-      a *= 0.5;
-    }
-    return v;
-  }
-
   // === SHARP INDIVIDUAL STARS ===
-  // Crisp pinpoint stars with spectral colors
   vec4 starField(vec2 uv, float density, float sizeBase, float threshold) {
     vec2 gv = fract(uv * density) - 0.5;
     vec2 id = floor(uv * density);
     vec3 starColor = vec3(0.0);
     float starAlpha = 0.0;
 
-    // Check neighboring cells for larger stars
     for (float y = -1.0; y <= 1.0; y++) {
       for (float x = -1.0; x <= 1.0; x++) {
         vec2 offset = vec2(x, y);
@@ -2755,15 +3047,11 @@ const GALAXY_FRAG = /* glsl */ `
         if (rand.x > threshold) {
           vec2 starPos = offset + rand - 0.5;
           float d = length(gv - starPos);
-
-          // Star size based on hash
           float magnitude = pow(rand.x - threshold, 0.4) / (1.0 - threshold);
           float size = sizeBase * (0.2 + magnitude * 0.5);
 
-          // SHARP star core - steep exponential falloff
           float core = exp(-d * d / (size * size * 0.08));
 
-          // Tiny spike/diffraction for bright stars only
           float spikes = 0.0;
           if (magnitude > 0.6) {
             float spike1 = exp(-abs(gv.x - starPos.x) * 80.0) * exp(-abs(gv.y - starPos.y) * 8.0);
@@ -2772,27 +3060,17 @@ const GALAXY_FRAG = /* glsl */ `
           }
 
           float intensity = core + spikes;
-
-          // Subtle twinkling
           float twinkle = 0.9 + 0.1 * sin(uTime * (2.0 + rand.y * 4.0) + rand.x * 20.0);
           intensity *= twinkle;
 
-          // Star color temperature (spectral class)
           vec3 col;
           float temp = rand.y;
-          if (temp < 0.15) {
-            col = vec3(1.0, 0.7, 0.5);       // M - Red
-          } else if (temp < 0.35) {
-            col = vec3(1.0, 0.85, 0.7);      // K - Orange
-          } else if (temp < 0.6) {
-            col = vec3(1.0, 0.98, 0.95);     // G - Yellow-white
-          } else if (temp < 0.8) {
-            col = vec3(0.95, 0.97, 1.0);     // F - White
-          } else if (temp < 0.92) {
-            col = vec3(0.85, 0.92, 1.0);     // A - Blue-white
-          } else {
-            col = vec3(0.7, 0.8, 1.0);       // B/O - Blue
-          }
+          if (temp < 0.15) col = vec3(1.0, 0.7, 0.5);
+          else if (temp < 0.35) col = vec3(1.0, 0.85, 0.7);
+          else if (temp < 0.6) col = vec3(1.0, 0.98, 0.95);
+          else if (temp < 0.8) col = vec3(0.95, 0.97, 1.0);
+          else if (temp < 0.92) col = vec3(0.85, 0.92, 1.0);
+          else col = vec3(0.7, 0.8, 1.0);
 
           starColor += col * intensity * magnitude * 1.5;
           starAlpha += intensity * magnitude;
@@ -2802,393 +3080,184 @@ const GALAXY_FRAG = /* glsl */ `
     return vec4(starColor, starAlpha);
   }
 
-  // === ORBITING DEBRIS SYSTEM ===
-  // Sharp debris particles with crisp edges
-  float debrisParticle(vec2 uv, float time, float orbitA, float orbitB, float phase, float speed, float size) {
-    float angle = time * speed + phase;
-    // Elliptical orbit
-    vec2 pos = vec2(cos(angle) * orbitA, sin(angle) * orbitB);
-    // Add slight wobble
-    pos += vec2(sin(time * 0.7 + phase * 2.0), cos(time * 0.5 + phase * 3.0)) * 0.006;
-
-    float d = length(uv - pos);
-    // SHARP exponential falloff - crisp pinpoint
-    float brightness = exp(-d * d / (size * size * 0.04));
-    return brightness;
-  }
-
-  float debrisRing(vec2 uv, float time, float baseRadius, float width, int count, float speedMult, float seed) {
-    float debris = 0.0;
-
-    for (int i = 0; i < 24; i++) {
-      if (i >= count) break;
-      float fi = float(i);
-      float h1 = hash(fi + seed);
-      float h2 = hash(fi + seed + 100.0);
-      float h3 = hash(fi + seed + 200.0);
-
-      float orbitA = baseRadius + (h1 - 0.5) * width;
-      float orbitB = orbitA * (0.85 + h2 * 0.3); // Eccentricity
-      float phase = h1 * TAU;
-      float speed = (0.15 + h2 * 0.25) * speedMult * (h3 > 0.5 ? 1.0 : -1.0);
-      float size = 0.0015 + h3 * 0.003;
-
-      debris += debrisParticle(uv, time, orbitA, orbitB, phase, speed, size) * (0.4 + h2 * 0.6);
-    }
-    return debris;
-  }
-
-  // Complete debris field with multiple concentric rings
-  float debrisField(vec2 uv, float time) {
-    float debris = 0.0;
-
-    // Inner fast debris
-    debris += debrisRing(uv, time, 0.06, 0.02, 18, 2.0, 0.0) * 0.9;
-    debris += debrisRing(uv, time, 0.10, 0.025, 20, 1.5, 50.0) * 0.8;
-
-    // Mid-range debris
-    debris += debrisRing(uv, time, 0.15, 0.03, 22, 1.0, 100.0) * 0.7;
-    debris += debrisRing(uv, time, 0.20, 0.035, 24, 0.8, 150.0) * 0.6;
-    debris += debrisRing(uv, time, 0.26, 0.04, 22, 0.6, 200.0) * 0.5;
-
-    // Outer slow debris
-    debris += debrisRing(uv, time, 0.32, 0.045, 20, 0.4, 250.0) * 0.4;
-    debris += debrisRing(uv, time, 0.38, 0.05, 18, 0.3, 300.0) * 0.35;
-    debris += debrisRing(uv, time, 0.43, 0.04, 16, 0.25, 350.0) * 0.3;
-
-    return debris;
-  }
-
-  // === SPIRAL ARM WITH BRANCHING ===
+  // === SPIRAL ARM ===
   float spiralArm(vec2 uv, float armCount, float tightness, float time, float armWidth) {
     float dist = length(uv);
     float angle = atan(uv.y, uv.x);
-
-    // Logarithmic spiral
     float spiral = angle + log(dist + 0.001) * tightness - time;
     spiral = mod(spiral, TAU / armCount);
     spiral = min(spiral, TAU / armCount - spiral);
-
-    // Add irregularity to arm edges
     float edgeNoise = noise(vec2(dist * 20.0 + time, angle * 5.0)) * 0.15;
     spiral += edgeNoise * (0.5 - dist);
-
     float arm = smoothstep(armWidth + edgeNoise * 0.5, 0.0, spiral);
     arm *= smoothstep(0.0, 0.06, dist);
     arm *= smoothstep(0.48, 0.18, dist);
-
     return arm;
   }
 
-  // Fine spiral filaments (spurs and feathers)
   float spiralFilaments(vec2 uv, float time) {
     float f = 0.0;
-
-    // Primary spurs branching from main arms
     f += spiralArm(uv, 4.0, 3.8, time * 0.8 + 0.3, 0.12) * 0.2;
     f += spiralArm(uv, 6.0, 4.2, time * 1.1 + 0.7, 0.08) * 0.15;
     f += spiralArm(uv, 8.0, 4.6, time * 0.6 + 1.2, 0.06) * 0.1;
-
-    // Ultra-fine filamentary structure
     f += spiralArm(uv, 10.0, 5.0, time * 1.3 + 0.5, 0.04) * 0.08;
-    f += spiralArm(uv, 14.0, 5.5, time * 0.9 + 2.1, 0.03) * 0.05;
-    f += spiralArm(uv, 18.0, 6.0, time * 1.5 + 1.7, 0.02) * 0.03;
-
     return f;
-  }
-
-  // === HII REGIONS & STELLAR NURSERIES ===
-  float stellarNurseries(vec2 uv, float armMask, float time) {
-    float nurseries = 0.0;
-
-    // Embed bright regions along spiral arms
-    float n1 = pow(fbm(uv * 25.0 + time * 0.1, 5), 3.0);
-    float n2 = pow(fbm(uv * 40.0 - time * 0.08, 4), 2.5);
-
-    nurseries = (n1 * 0.6 + n2 * 0.4) * armMask;
-    nurseries = smoothstep(0.15, 0.5, nurseries);
-
-    return nurseries;
-  }
-
-  // === DARK NEBULAE (Bok Globules) ===
-  float darkNebulae(vec2 uv, float time) {
-    float dark = 0.0;
-
-    // Large dark cloud complexes
-    float d1 = fbm(uv * 8.0 + time * 0.02, 6);
-    float d2 = fbmUltra(uv * 15.0 - time * 0.01);
-
-    dark = d1 * 0.6 + d2 * 0.4;
-    dark = smoothstep(0.55, 0.75, dark);
-
-    // Add fine dark filaments
-    float filaments = ridgedFbm(uv * 30.0 + time * 0.03);
-    dark += filaments * 0.15 * smoothstep(0.4, 0.6, d1);
-
-    return dark;
   }
 
   // === GALAXY COLOR PALETTE ===
   vec3 galaxyColor(float intensity, float temp, float nursery) {
-    vec3 white = vec3(1.0, 1.0, 1.0);
     vec3 cream = vec3(1.0, 0.97, 0.92);
     vec3 paleBlue = vec3(0.88, 0.92, 1.0);
     vec3 lightBlue = vec3(0.75, 0.85, 0.98);
     vec3 gold = vec3(1.0, 0.9, 0.65);
     vec3 warmWhite = vec3(1.0, 0.95, 0.88);
-
-    // HII region pink/magenta for stellar nurseries
     vec3 hiiPink = vec3(1.0, 0.6, 0.7);
-
     intensity = clamp(intensity, 0.0, 1.0);
 
     vec3 baseCol;
-    if (temp > 0.75) {
-      // Hot core - golden white
-      baseCol = mix(gold, warmWhite, (temp - 0.75) * 4.0);
-    } else if (temp > 0.45) {
-      // Mid region - cream to pale gold
-      baseCol = mix(cream, gold, (temp - 0.45) * 3.33);
-    } else if (temp > 0.2) {
-      // Arm region - pale blue to cream
-      baseCol = mix(lightBlue, cream, (temp - 0.2) * 4.0);
-    } else {
-      // Outer - blue tinted
-      baseCol = mix(paleBlue * 0.7, lightBlue, temp * 5.0);
-    }
+    if (temp > 0.75) baseCol = mix(gold, warmWhite, (temp - 0.75) * 4.0);
+    else if (temp > 0.45) baseCol = mix(cream, gold, (temp - 0.45) * 3.33);
+    else if (temp > 0.2) baseCol = mix(lightBlue, cream, (temp - 0.2) * 4.0);
+    else baseCol = mix(paleBlue * 0.7, lightBlue, temp * 5.0);
 
-    // Mix in HII region color
     baseCol = mix(baseCol, hiiPink, nursery * 0.3);
-
     return baseCol * intensity;
   }
 
   void main() {
     vec2 uv = vUv - 0.5;
-
-    // Galaxy tilt (~75 degrees) - steep angle to see side profile
     float tiltAngle = 1.3;
     vec2 tiltedUV = vec2(uv.x, uv.y / cos(tiltAngle));
 
-    // === SLOW GALAXY ROTATION ===
-    // Rotate entire galaxy around center (one rotation every ~3 minutes)
-    float rotationSpeed = 0.035;
-    float rotAngle = uTime * rotationSpeed;
+    float rotAngle = uTime * 0.035;
     mat2 rotMat = mat2(cos(rotAngle), -sin(rotAngle), sin(rotAngle), cos(rotAngle));
     tiltedUV = rotMat * tiltedUV;
 
     float dist = length(tiltedUV);
-    float angle = atan(tiltedUV.y, tiltedUV.x);
-
     float time = uTime * 0.015;
 
-    // === DIRECTIONAL LIGHTING - light comes from one side ===
-    // Light direction (from upper-left, pointing into the galaxy)
+    // Directional lighting
     vec2 lightDir = normalize(vec2(0.7, 0.5));
-    float lightAngle = atan(lightDir.y, lightDir.x);
+    float facingLight = dot(normalize(tiltedUV + 0.001), lightDir) * 0.5 + 0.5;
 
-    // How much each point faces the light (based on position angle)
-    float facingLight = dot(normalize(tiltedUV + 0.001), lightDir);
-    facingLight = facingLight * 0.5 + 0.5; // remap to 0-1
-
-    // === STRONG RANDOMIZED REFLECTIONS ===
-    // Multiple noise layers for complex light scattering
     float lightNoise1 = fbm(tiltedUV * 8.0 + time * 0.3, 5);
     float lightNoise2 = fbmUltra(tiltedUV * 20.0 - time * 0.2);
-    float lightNoise3 = pow(fbm(tiltedUV * 35.0 + time * 0.5, 4), 1.5);
-
-    // Combine noises for varied reflection patches
-    float reflectionNoise = lightNoise1 * 0.5 + lightNoise2 * 0.3 + lightNoise3 * 0.4;
-
-    // Create bright reflection spots (like dust clouds catching light)
+    float reflectionNoise = lightNoise1 * 0.5 + lightNoise2 * 0.5;
     float brightSpots = smoothstep(0.5, 0.8, reflectionNoise) * 1.5;
+    float lightVariation = 0.25 + facingLight * 0.75 * (0.5 + reflectionNoise * 0.7);
+    lightVariation += brightSpots * facingLight * 0.3;
 
-    // Create shadow patches (occluded regions)
-    float shadowPatches = smoothstep(0.6, 0.3, lightNoise1) * 0.6;
-
-    // Combine directional light with randomized reflections
-    float lightVariation = facingLight * (0.4 + reflectionNoise * 0.8);
-    lightVariation += brightSpots * facingLight; // Bright spots on lit side
-    lightVariation *= (1.0 - shadowPatches * (1.0 - facingLight)); // Shadows on dark side
-    lightVariation = 0.25 + lightVariation * 0.75; // Range: 0.25 to 1.0
-
-    // Extra sparkle reflections - random bright points
     float sparkleNoise = fbmUltra(tiltedUV * 60.0 + uTime * 0.1);
     float sparkles = smoothstep(0.75, 0.9, sparkleNoise) * facingLight * 2.0;
 
     vec3 color = vec3(0.0);
     float totalAlpha = 0.0;
 
-    // === DEEP BACKGROUND STARFIELD - sharp pinpoints ===
+    // Background stars
     vec4 bgStars1 = starField(uv * 0.7, 60.0, 0.018, 0.88);
     vec4 bgStars2 = starField(uv * 1.1 + 0.3, 100.0, 0.012, 0.9);
     vec4 bgStars3 = starField(uv * 0.5 + 0.7, 40.0, 0.025, 0.85);
     vec4 bgStars4 = starField(uv * 1.5 + 0.15, 150.0, 0.008, 0.92);
-    vec4 bgStars5 = starField(uv * 2.0 + 0.5, 220.0, 0.005, 0.94);
-    vec4 bgStars6 = starField(uv * 2.5 + 0.8, 300.0, 0.003, 0.95);
-
-    vec3 allBgStars = bgStars1.rgb + bgStars2.rgb + bgStars3.rgb + bgStars4.rgb + bgStars5.rgb + bgStars6.rgb;
+    vec3 allBgStars = bgStars1.rgb + bgStars2.rgb + bgStars3.rgb + bgStars4.rgb;
     color += allBgStars * 0.7;
 
-    // === GALACTIC BULGE / CORE ===
+    // Galactic core
     float coreSize = 0.05;
     float coreDist = length(tiltedUV);
-
-    // Sharp concentrated core with exponential falloff
     float innerCore = exp(-coreDist * coreDist / (coreSize * coreSize * 0.5)) * 2.0;
-
-    // Tighter mid glow
     float midCore = exp(-coreDist * coreDist / (coreSize * coreSize * 3.0)) * 0.5;
-
-    // Subtle outer halo
     float outerCore = exp(-coreDist * coreDist / (coreSize * coreSize * 12.0)) * 0.2;
 
-    // Core texture - dense stellar population with sharp detail
     float coreGrain = fbmUltra(tiltedUV * 150.0 + uTime * 0.05);
     float coreFine = fbmUltra(tiltedUV * 250.0 - uTime * 0.03);
-    float coreUltra = fbmUltra(tiltedUV * 400.0 + uTime * 0.02);
-    innerCore *= 0.7 + coreGrain * 0.3 + coreFine * 0.15 + coreUltra * 0.08;
+    innerCore *= 0.7 + coreGrain * 0.3 + coreFine * 0.15;
 
-    // Core color gradient with directional lighting
     vec3 coreCol = mix(vec3(1.0, 0.92, 0.75), vec3(1.0, 0.98, 0.95), innerCore * 0.35);
     coreCol = mix(coreCol, vec3(1.0, 0.88, 0.7), smoothstep(0.0, 0.06, coreDist));
-    coreCol *= (0.7 + lightVariation * 0.4); // Stronger light variation on core
-    coreCol += vec3(1.0, 0.95, 0.85) * sparkles * 0.3; // Add sparkle reflections
+    coreCol *= (0.7 + lightVariation * 0.4);
+    coreCol += vec3(1.0, 0.95, 0.85) * sparkles * 0.3;
 
     color += coreCol * (innerCore + midCore + outerCore);
     totalAlpha += innerCore * 0.85 + midCore * 0.4 + outerCore * 0.2;
 
-    // === PRIMARY SPIRAL ARMS ===
+    // Spiral arms
     float arm1 = spiralArm(tiltedUV, 2.0, 2.6, time, 0.38);
     float arm2 = spiralArm(tiltedUV, 2.0, 2.6, time + PI, 0.38);
-
-    // Secondary arms
     float arm3 = spiralArm(tiltedUV, 2.0, 3.0, time + PI * 0.5, 0.28) * 0.55;
     float arm4 = spiralArm(tiltedUV, 2.0, 3.0, time + PI * 1.5, 0.28) * 0.55;
-
-    // Tertiary structure
     float arm5 = spiralArm(tiltedUV, 4.0, 3.4, time * 1.1 + 0.3, 0.18) * 0.35;
-
     float totalArms = arm1 + arm2 + arm3 + arm4 + arm5;
-
-    // Add fine filaments
     float filaments = spiralFilaments(tiltedUV, time);
     totalArms += filaments;
 
-    // === ARM TEXTURE & STRUCTURE ===
-    // Multi-scale dust and gas
+    // Arm texture
     float dustCoarse = fbm(tiltedUV * 6.0 + time * 0.3, 5) * 0.5;
     float dustMedium = fbm(tiltedUV * 15.0 + time * 0.2, 6) * 0.35;
     float dustFine = fbmUltra(tiltedUV * 35.0 + time * 0.15) * 0.25;
     float dustUltra = fbmUltra(tiltedUV * 70.0 - time * 0.1) * 0.15;
-    float dustMicro = fbmUltra(tiltedUV * 120.0 + time * 0.08) * 0.1;
-
-    // Star cluster concentrations
     float clusters = pow(fbm(tiltedUV * 20.0 + time * 0.25, 4), 2.5) * 1.8;
     float microClusters = pow(fbmUltra(tiltedUV * 50.0 + time * 0.12), 2.0) * 0.8;
 
-    float armDensity = totalArms * (0.55 + dustCoarse + dustMedium + dustFine + dustUltra + dustMicro);
+    float armDensity = totalArms * (0.55 + dustCoarse + dustMedium + dustFine + dustUltra);
     armDensity += clusters * totalArms * 0.5;
     armDensity += microClusters * totalArms * 0.3;
 
-    // === STELLAR NURSERIES IN ARMS ===
-    float nurseries = stellarNurseries(tiltedUV, totalArms, time);
+    // Stellar nurseries
+    float n1 = pow(fbm(tiltedUV * 25.0 + time * 0.1, 5), 3.0);
+    float nurseries = smoothstep(0.15, 0.5, n1 * totalArms);
 
-    // Temperature gradient
-    float temp = 1.0 - dist * 1.7;
-    temp = clamp(temp, 0.0, 1.0);
-
-    // Arm coloring with strong directional lighting
+    float temp = clamp(1.0 - dist * 1.7, 0.0, 1.0);
     vec3 armColor = galaxyColor(armDensity, temp, nurseries);
-
-    // Apply directional light - arms facing light are much brighter
     armColor *= lightVariation * 1.2;
-
-    // Add sparkle reflections to arms
     armColor += vec3(1.0, 0.97, 0.9) * sparkles * totalArms * 0.5;
-
-    // Bright reflection patches in dust clouds
     float dustReflection = brightSpots * totalArms * 0.4;
     armColor += vec3(0.95, 0.92, 0.85) * dustReflection;
+    armColor += vec3(0.85, 0.9, 1.0) * clusters * totalArms * 0.4 * lightVariation;
 
-    // Bright OB associations
-    float obStars = clusters * totalArms * 0.4;
-    armColor += vec3(0.85, 0.9, 1.0) * obStars * lightVariation;
-
-    // Individual bright arm stars
     vec4 armStars = starField(tiltedUV * 1.2, 300.0, 0.01, 0.93);
     armColor += armStars.rgb * totalArms * 0.6;
 
     color += armColor;
     totalAlpha += armDensity * 0.75;
 
-    // === DARK NEBULAE / DUST LANES ===
-    float darkDust = darkNebulae(tiltedUV, time);
-    float dustLaneMask = totalArms * darkDust * 0.45;
-    color *= 1.0 - dustLaneMask * 0.5;
+    // Dark dust
+    float darkDust = fbm(tiltedUV * 8.0 + time * 0.02, 6);
+    darkDust = smoothstep(0.55, 0.75, darkDust);
+    color *= 1.0 - darkDust * totalArms * 0.35;
 
-    // Fine extinction
-    float fineExtinction = fbmUltra(tiltedUV * 45.0 + time * 0.05);
-    fineExtinction = smoothstep(0.5, 0.7, fineExtinction) * totalArms * 0.15;
-    color *= 1.0 - fineExtinction * 0.3;
-
-    // === INTERSTELLAR MEDIUM - with directional light ===
+    // ISM and diffuse
     float ism = fbmUltra(tiltedUV * 22.0 + uTime * 0.03);
     ism *= smoothstep(0.38, 0.1, dist);
     color += vec3(0.9, 0.92, 0.97) * ism * 0.035 * lightVariation;
 
-    // === DIFFUSE GALACTIC LIGHT - with light direction ===
     float diffuse = exp(-dist * dist / 0.025) * 0.08;
     color += vec3(0.95, 0.93, 0.88) * diffuse * lightVariation;
 
-    // === OUTER HALO - with rim lighting on edge ===
+    // Halo
     float halo = exp(-dist * dist / 0.06) * 0.04;
     float haloTex = fbmUltra(tiltedUV * 15.0 + uTime * 0.02);
     halo *= 0.8 + haloTex * 0.3;
-
-    // Rim/edge lighting - bright edge where light grazes the tilted disk
     float rimLight = smoothstep(0.12, 0.32, abs(tiltedUV.y)) * smoothstep(0.45, 0.2, dist);
-    rimLight *= facingLight * 1.2;
-    // Add reflection variation to rim
-    rimLight *= (0.6 + reflectionNoise * 0.6);
+    rimLight *= facingLight * 1.2 * (0.6 + reflectionNoise * 0.6);
     halo += rimLight * 0.25;
-
-    // Bright reflection spots along rim
-    float rimSparkle = sparkles * smoothstep(0.1, 0.25, abs(tiltedUV.y)) * 0.4;
-    halo += rimSparkle;
-
-    // Globular cluster hints - sharp points
-    vec4 gcStars = starField(tiltedUV * 0.8, 30.0, 0.025, 0.85);
-    halo += gcStars.a * 0.08 * smoothstep(0.15, 0.35, dist);
-
+    halo += sparkles * smoothstep(0.1, 0.25, abs(tiltedUV.y)) * 0.4;
     color += vec3(0.9, 0.92, 0.97) * halo;
 
-    // === FOREGROUND STARS - bright and sharp ===
+    // Foreground stars
     vec4 fgStars1 = starField(uv + 0.5, 22.0, 0.03, 0.78);
     vec4 fgStars2 = starField(uv * 0.8 + 0.2, 18.0, 0.04, 0.75);
-    vec4 fgStars3 = starField(uv * 0.6 + 0.4, 15.0, 0.05, 0.72);
     color += fgStars1.rgb * 0.9;
     color += fgStars2.rgb * 0.7;
-    color += fgStars3.rgb * 0.5;
 
-    // === FINAL ADJUSTMENTS ===
-    // Subtle temporal variation
+    // Final
     float pulse = 0.99 + 0.01 * sin(uTime * 0.4);
     color *= pulse;
-
-    // Vignette / edge fade
     float edgeFade = smoothstep(0.54, 0.30, dist);
     color *= edgeFade;
-
-    // Increase contrast for sharper appearance
     color = pow(color, vec3(0.92));
-
-    // Boost bright points
     float luminance = dot(color, vec3(0.299, 0.587, 0.114));
     color = mix(color, color * 1.3, smoothstep(0.5, 1.5, luminance));
 
-    // Final alpha
     float alpha = clamp(totalAlpha + length(allBgStars) * 0.5, 0.0, 1.0);
     alpha = max(alpha, smoothstep(0.01, 0.06, length(color)));
     alpha *= edgeFade;
@@ -3197,12 +3266,17 @@ const GALAXY_FRAG = /* glsl */ `
   }
 `;
 
+// ─── Galaxy Component (uses quality context) ────────────
 function Galaxy3D() {
   const meshRef = useRef<THREE.Mesh>(null);
+  const { effectiveQuality } = useQuality();
 
   const uniforms = useMemo(() => ({
     uTime: { value: 0 },
   }), []);
+
+  // Select shader based on quality
+  const fragmentShader = effectiveQuality === "high" ? GALAXY_FRAG_HQ : GALAXY_FRAG;
 
   useFrame(({ clock }) => {
     if (meshRef.current) {
@@ -3223,8 +3297,9 @@ function Galaxy3D() {
     >
       <planeGeometry args={[280, 280]} />
       <shaderMaterial
+        key={effectiveQuality} // Force remount when quality changes
         vertexShader={GALAXY_VERT}
-        fragmentShader={GALAXY_FRAG}
+        fragmentShader={fragmentShader}
         uniforms={uniforms}
         transparent={true}
         depthWrite={false}
@@ -5081,7 +5156,149 @@ function SunProjector({
   return null;
 }
 
+// ─── Quality Toggle Button ──────────────────────────────
+
+function QualityToggle() {
+  const { quality, effectiveQuality, setQuality, deviceInfo } = useQuality();
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  const cycleQuality = useCallback(() => {
+    const modes: QualityLevel[] = ["auto", "low", "high"];
+    const currentIndex = modes.indexOf(quality);
+    const nextIndex = (currentIndex + 1) % modes.length;
+    setQuality(modes[nextIndex]);
+  }, [quality, setQuality]);
+
+  const getIcon = () => {
+    if (effectiveQuality === "high") return "✦";
+    return "◇";
+  };
+
+  const getLabel = () => {
+    if (quality === "auto") return `自動 (${effectiveQuality === "high" ? "高" : "低"})`;
+    if (quality === "high") return "高画質";
+    return "軽量";
+  };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: 16,
+        right: 16,
+        zIndex: 100,
+      }}
+    >
+      <button
+        onClick={cycleQuality}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "8px 12px",
+          borderRadius: 10,
+          border: "1px solid rgba(255,255,255,0.1)",
+          background: effectiveQuality === "high"
+            ? "linear-gradient(135deg, rgba(6,182,212,0.15), rgba(6,182,212,0.05))"
+            : "rgba(30,30,30,0.8)",
+          color: effectiveQuality === "high" ? "#22d3ee" : "#888",
+          fontSize: 12,
+          fontFamily: "var(--font-space-grotesk), sans-serif",
+          cursor: "pointer",
+          backdropFilter: "blur(8px)",
+          transition: "all 0.2s ease",
+        }}
+      >
+        <span style={{ fontSize: 14 }}>{getIcon()}</span>
+        <span>{getLabel()}</span>
+      </button>
+
+      {/* Tooltip */}
+      {showTooltip && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 48,
+            right: 0,
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: "rgba(20,20,20,0.95)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            backdropFilter: "blur(12px)",
+            minWidth: 200,
+            fontSize: 11,
+            color: "#aaa",
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ color: "#fff", marginBottom: 6, fontWeight: 500 }}>
+            グラフィック品質
+          </div>
+          <div style={{ marginBottom: 4 }}>
+            CPU: {deviceInfo.cores}コア
+          </div>
+          {deviceInfo.memory && (
+            <div style={{ marginBottom: 4 }}>
+              メモリ: {deviceInfo.memory}GB+
+            </div>
+          )}
+          <div style={{
+            fontSize: 10,
+            color: "#666",
+            marginTop: 6,
+            paddingTop: 6,
+            borderTop: "1px solid rgba(255,255,255,0.1)",
+          }}>
+            GPU: {deviceInfo.gpu.slice(0, 40)}
+            {deviceInfo.gpu.length > 40 ? "..." : ""}
+          </div>
+          <div style={{
+            fontSize: 10,
+            color: deviceInfo.isHighEnd ? "#22d3ee" : "#888",
+            marginTop: 4,
+          }}>
+            {deviceInfo.isHighEnd ? "高性能デバイス検出" : "標準デバイス"}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────
+
+function UniverseCanvasInner({
+  theme = "dark",
+  sunPosRef,
+  skipIntro = false,
+  containerRef,
+}: {
+  theme?: "dark" | "light";
+  sunPosRef?: { current: { x: number; y: number } };
+  skipIntro?: boolean;
+  containerRef: React.RefObject<HTMLDivElement>;
+}) {
+  return (
+    <>
+      <Canvas
+        camera={{ position: [0, 12, 22], fov: 45 }}
+        gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+        dpr={[1, 1.5]}
+        style={{ cursor: "auto" }}
+      >
+        <Suspense fallback={null}>
+          <Scene theme={theme} skipIntro={skipIntro} />
+          {sunPosRef && containerRef.current && (
+            <SunProjector sunPosRef={sunPosRef} containerRef={containerRef} />
+          )}
+        </Suspense>
+      </Canvas>
+      <QualityToggle />
+    </>
+  );
+}
 
 export function UniverseCanvas({
   theme = "dark",
@@ -5095,20 +5312,15 @@ export function UniverseCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100vh", background: "#020202" }}>
-      <Canvas
-        camera={{ position: [0, 12, 22], fov: 45 }}
-        gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
-        dpr={[1, 1.5]}
-        style={{ cursor: "auto" }}
-      >
-        <Suspense fallback={null}>
-          <Scene theme={theme} skipIntro={skipIntro} />
-          {sunPosRef && (
-            <SunProjector sunPosRef={sunPosRef} containerRef={containerRef} />
-          )}
-        </Suspense>
-      </Canvas>
-    </div>
+    <QualityProvider>
+      <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100vh", background: "#020202" }}>
+        <UniverseCanvasInner
+          theme={theme}
+          sunPosRef={sunPosRef}
+          skipIntro={skipIntro}
+          containerRef={containerRef}
+        />
+      </div>
+    </QualityProvider>
   );
 }
