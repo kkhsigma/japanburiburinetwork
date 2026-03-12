@@ -298,10 +298,11 @@ type FilterValue = RiskLevel | string;
 
 interface TrailPoint { x: number; y: number }
 
-interface Spark {
+interface Shockwave {
   x: number; y: number;
-  vx: number; vy: number;
-  life: number; // 0→1, dies at 1
+  radius: number;
+  maxRadius: number;
+  life: number; // 0→1
   hex: string;
 }
 
@@ -314,18 +315,32 @@ interface FloatingCard {
   squishX: number; // 1 = normal, >1 = stretched horizontally
   squishY: number; // 1 = normal, <1 = compressed vertically
   trail: TrailPoint[]; // last N positions for comet tail
+  pinned: boolean; // Feature 7: anchored in place
   el: HTMLDivElement | null;
 }
 
 const TRAIL_LENGTH = 8;
-const MAX_SPARKS = 60;
+const MAX_SHOCKWAVES = 10;
+
 
 // Sized for molecular structure display
 const CARD_W = 135;
 const CARD_H = 80;
-const EXCLUSION_W = 500;
-const EXCLUSION_H = 350;
+const EXCLUSION_W = 420;
+const EXCLUSION_H = 250;
 const BAR_HEIGHT = 70; // substance bar collision zone from bottom
+
+// ── Compare Row helper ──
+function CompareRow({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[7px] font-mono text-white/25">{label}</span>
+      <span className="text-[9px] font-mono font-medium" style={{ color: color || "rgba(255,255,255,0.6)" }}>
+        {value}
+      </span>
+    </div>
+  );
+}
 
 interface FloatingCardsBgProps {
   transitionState?: TransitionState;
@@ -344,9 +359,26 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
   const lastScrollY = useRef(0);
   const transitionRef = useRef<TransitionState>("idle");
   const lineFrameCount = useRef(0);
-  const sparksRef = useRef<Spark[]>([]);
+  const shockwavesRef = useRef<Shockwave[]>([]);
   const hoveredIdRef = useRef<string | null>(null);
   const globalTime = useRef(0); // monotonic time for constellation dot animation
+
+  // ── Feature: Magnetic cursor state ──
+  const prevMouseRef = useRef({ x: -1000, y: -1000 });
+  const mouseSpeedRef = useRef(0);
+
+  // ── Feature 7: Double-tap to pin ──
+  const pinnedIdsRef = useRef<Set<string>>(new Set());
+
+  // ── Feature 9: Flick to launch ──
+  const flickRef = useRef<{ id: string | null; x: number; y: number; time: number }>({
+    id: null, x: 0, y: 0, time: 0,
+  });
+
+  // ── Feature 4: Gravity well (long-press) ──
+  const gravityWellRef = useRef<{ x: number; y: number; active: boolean; strength: number; timer: ReturnType<typeof setTimeout> | null }>({
+    x: 0, y: 0, active: false, strength: 0, timer: null,
+  });
 
   // Pre-built lookup for O(1) compound data access in physics loop
   const compLookup = useRef(new Map(
@@ -357,7 +389,17 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
   const [filterMode, setFilterMode] = useState<FilterMode>("none");
   const [filterValue, setFilterValue] = useState<FilterValue | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const tooltipPos = useRef({ x: 0, y: 0 });
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= 3) return prev; // max 3
+      return [...prev, id];
+    });
+  }, []);
 
   transitionRef.current = transitionState;
   filterRef.current = { mode: filterMode, value: filterValue };
@@ -367,7 +409,8 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
     if (!card.el) return;
     const sx = card.squishX * scale;
     const sy = card.squishY * scale;
-    card.el.style.transform = `translate(${card.x - CARD_W / 2}px, ${card.y - CARD_H / 2}px) scale(${sx}, ${sy})`;
+    // translate3d triggers GPU compositing — no layout/paint, just composite
+    card.el.style.transform = `translate3d(${card.x - CARD_W / 2}px, ${card.y - CARD_H / 2}px, 0) scale(${sx}, ${sy})`;
     card.el.style.opacity = String(opacity);
   }, []);
 
@@ -383,16 +426,31 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
     const exH = EXCLUSION_H / 2 + CARD_H / 2;
     const padX = CARD_W / 2 + 10;
     const padY = CARD_H / 2 + 10;
+    const maxY = h * 0.85;
+
+    // Build spawn zones: left, right, bottom-left, bottom-right of exclusion
+    // This guarantees molecules never spawn inside the hero text area
+    const zones: { x1: number; y1: number; x2: number; y2: number }[] = [
+      { x1: padX, y1: padY, x2: cx - exW, y2: maxY },              // left column
+      { x1: cx + exW, y1: padY, x2: w - padX, y2: maxY },          // right column
+      { x1: cx - exW, y1: cy + exH, x2: cx + exW, y2: maxY },      // below center
+      { x1: cx - exW, y1: padY, x2: cx + exW, y2: cy - exH },      // above center (small strip)
+    ].filter(z => z.x2 > z.x1 && z.y2 > z.y1); // remove invalid zones
+
+    // Weight zones by area so distribution is even
+    const areas = zones.map(z => (z.x2 - z.x1) * (z.y2 - z.y1));
+    const totalArea = areas.reduce((a, b) => a + b, 0);
 
     const cards: FloatingCard[] = mockCompounds.map((compound) => {
-      let x: number, y: number, attempts = 0;
-      // Bias toward upper 70% so molecules don't cluster near the substance bar
-      const maxInitY = h * 0.7;
-      do {
-        x = padX + Math.random() * (w - padX * 2);
-        y = padY + Math.random() * (maxInitY - padY);
-        attempts++;
-      } while (attempts < 50 && Math.abs(x - cx) < exW && Math.abs(y - cy) < exH);
+      // Pick a zone weighted by area
+      let r = Math.random() * totalArea;
+      let zone = zones[0];
+      for (let i = 0; i < zones.length; i++) {
+        r -= areas[i];
+        if (r <= 0) { zone = zones[i]; break; }
+      }
+      const x = zone.x1 + Math.random() * (zone.x2 - zone.x1);
+      const y = zone.y1 + Math.random() * (zone.y2 - zone.y1);
 
       return {
         id: compound.id, x, y,
@@ -400,6 +458,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         vy: (Math.random() - 0.5) * 0.3,
         squishX: 1, squishY: 1,
         trail: [],
+        pinned: false,
         el: null,
       };
     });
@@ -461,13 +520,20 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
     };
     window.addEventListener("resize", onResize);
 
-    // Mouse tracking for repulsion
+    // Mouse tracking for magnetic cursor (speed-aware attract/repel)
     const onMouseMove = (e: MouseEvent) => {
       const r = container.getBoundingClientRect();
-      mouseRef.current = { x: e.clientX - r.left, y: e.clientY - r.top };
+      const newX = e.clientX - r.left;
+      const newY = e.clientY - r.top;
+      const dx = newX - prevMouseRef.current.x;
+      const dy = newY - prevMouseRef.current.y;
+      mouseSpeedRef.current = Math.sqrt(dx * dx + dy * dy);
+      prevMouseRef.current = { x: newX, y: newY };
+      mouseRef.current = { x: newX, y: newY };
     };
     const onMouseLeave = () => {
       mouseRef.current = { x: -1000, y: -1000 };
+      mouseSpeedRef.current = 0;
     };
     const onScroll = () => {
       const newY = window.scrollY || window.pageYOffset;
@@ -475,13 +541,86 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       lastScrollY.current = newY;
       scrollY.current = newY;
     };
+
+    // ── Feature 4: Gravity well — long-press anywhere on page ──
+    const LONG_PRESS_MS = 400;
+    const gw = gravityWellRef.current;
+
+    const startGravityWell = (x: number, y: number) => {
+      const r = container.getBoundingClientRect();
+      gw.x = x - r.left;
+      gw.y = y - r.top;
+      gw.strength = 0;
+      gw.timer = setTimeout(() => {
+        gw.active = true;
+      }, LONG_PRESS_MS);
+    };
+    const endGravityWell = () => {
+      if (gw.timer) { clearTimeout(gw.timer); gw.timer = null; }
+      document.body.style.userSelect = "";
+      if (gw.active) {
+        // Release: fling all molecules outward from the well
+        const cards = cardsRef.current;
+        for (const card of cards) {
+          const dx = card.x - gw.x;
+          const dy = card.y - gw.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const fling = Math.max(0, 3 - dist * 0.005) + Math.random();
+          card.vx += (dx / dist) * fling;
+          card.vy += (dy / dist) * fling;
+          card.squishX = 1.2; card.squishY = 0.8;
+        }
+        // Spawn release shockwave
+        const shockwaves = shockwavesRef.current;
+        if (shockwaves.length < MAX_SHOCKWAVES) {
+          shockwaves.push({ x: gw.x, y: gw.y, radius: 0, maxRadius: 200, life: 0, hex: "#8b5cf6" });
+        }
+      }
+      gw.active = false;
+      gw.strength = 0;
+    };
+    const moveGravityWell = (x: number, y: number) => {
+      if (gw.timer || gw.active) {
+        const r = container.getBoundingClientRect();
+        gw.x = x - r.left;
+        gw.y = y - r.top;
+      }
+    };
+
+    // Mouse long-press — on document so it works through pointer-events-none layers
+    // Only intercept clicks on the home page background, not on interactive elements
+    const interactiveTags = new Set(["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA"]);
+    const onGwMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Skip if clicking an interactive element or inside one
+      if (interactiveTags.has(target.tagName) || target.closest("a, button, input, select, textarea, [role=button]")) return;
+      e.preventDefault(); // prevent text selection
+      document.body.style.userSelect = "none";
+      startGravityWell(e.clientX, e.clientY);
+    };
+    const onGwMouseMove = (e: MouseEvent) => moveGravityWell(e.clientX, e.clientY);
+    const onGwTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) startGravityWell(e.touches[0].clientX, e.touches[0].clientY);
+    };
+    const onGwTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) moveGravityWell(e.touches[0].clientX, e.touches[0].clientY);
+    };
+    document.addEventListener("mousedown", onGwMouseDown);
+    document.addEventListener("mousemove", onGwMouseMove);
+    window.addEventListener("mouseup", endGravityWell);
+    document.addEventListener("touchstart", onGwTouchStart, { passive: true });
+    document.addEventListener("touchmove", onGwTouchMove, { passive: true });
+    window.addEventListener("touchend", endGravityWell);
+    window.addEventListener("touchcancel", endGravityWell);
+
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("scroll", onScroll, { passive: true });
     container.addEventListener("mouseleave", onMouseLeave);
 
-    // Init canvas
+    // Init canvas + cache context
     const canvas = linesCanvasRef.current;
     if (canvas) { canvas.width = rect.width; canvas.height = rect.height; }
+    const cachedCtx = canvas?.getContext("2d") ?? null;
 
     let lastUpdate = 0;
     const tick = (now: number) => {
@@ -517,11 +656,9 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         return;
       }
 
-      // Throttle physics to ~30fps for performance
-      if (now - lastUpdate < 33) {
-        animRef.current = requestAnimationFrame(tick);
-        return;
-      }
+      // Run physics every frame for smooth 60fps movement
+      // Delta time clamped to avoid spiral of death on tab-switch
+      const dt = Math.min(now - lastUpdate, 50) / 16.67; // normalized: 1.0 = 60fps
       lastUpdate = now;
 
       const cx = cw / 2;
@@ -534,27 +671,75 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       const mx = mouseRef.current.x;
       const my = mouseRef.current.y;
 
+      // ── Feature 2: Magnetic cursor — slow = attract, fast = repel ──
+      const cursorSpeed = mouseSpeedRef.current;
+      // Decay cursor speed over frames for smooth transitions
+      mouseSpeedRef.current *= 0.85;
+
+      // ── Feature 4: Gravity well — ramp up strength while held ──
+      const gwActive = gravityWellRef.current.active;
+      if (gwActive) {
+        gravityWellRef.current.strength = Math.min(gravityWellRef.current.strength + 0.002, 0.06);
+      }
+      const gwX = gravityWellRef.current.x;
+      const gwY = gravityWellRef.current.y;
+      const gwStr = gravityWellRef.current.strength;
+
       for (const card of cards) {
-        // Mouse repulsion — gentle push, doesn't fight hover
+        // Feature 7: Pinned cards stay frozen
+        if (card.pinned) {
+          card.vx = 0;
+          card.vy = 0;
+          card.squishX += (1 - card.squishX) * 0.15;
+          card.squishY += (1 - card.squishY) * 0.15;
+          continue;
+        }
+
+        // Magnetic cursor
         const dmx = card.x - mx;
         const dmy = card.y - my;
         const mouseDist = Math.sqrt(dmx * dmx + dmy * dmy);
-        const MOUSE_RADIUS = 100;
-        // Only repel if mouse is not directly on the card (allows hover)
-        if (mouseDist > 30 && mouseDist < MOUSE_RADIUS && mouseDist > 0) {
-          const force = (MOUSE_RADIUS - mouseDist) * 0.003;
-          card.vx += (dmx / mouseDist) * force;
-          card.vy += (dmy / mouseDist) * force;
+        const MOUSE_RADIUS = 160;
+        if (mouseDist > 20 && mouseDist < MOUSE_RADIUS && mouseDist > 0) {
+          const proximity = (MOUSE_RADIUS - mouseDist) / MOUSE_RADIUS;
+          const speedFactor = cursorSpeed / 8;
+          if (speedFactor > 1) {
+            const repelForce = proximity * Math.min(speedFactor * 0.015, 0.06);
+            card.vx += (dmx / mouseDist) * repelForce;
+            card.vy += (dmy / mouseDist) * repelForce;
+          } else {
+            const attractForce = proximity * 0.004 * (1 - speedFactor * 0.5);
+            card.vx -= (dmx / mouseDist) * attractForce;
+            card.vy -= (dmy / mouseDist) * attractForce;
+          }
         }
 
-        card.x += card.vx;
-        card.y += card.vy;
+        // ── Feature 4: Gravity well pull — orbit style ──
+        if (gwActive && gwStr > 0) {
+          const gdx = gwX - card.x;
+          const gdy = gwY - card.y;
+          const gDist = Math.sqrt(gdx * gdx + gdy * gdy) || 1;
+          // Pull toward well center with inverse-distance falloff
+          const pullForce = gwStr * Math.min(300 / gDist, 3);
+          card.vx += (gdx / gDist) * pullForce;
+          card.vy += (gdy / gDist) * pullForce;
+          // Add tangential velocity for orbital motion (perpendicular to pull direction)
+          const tangentForce = gwStr * Math.min(150 / gDist, 1.5) * 0.6;
+          card.vx += (-gdy / gDist) * tangentForce;
+          card.vy += (gdx / gDist) * tangentForce;
+          // Extra damping in gravity well to prevent runaway speeds
+          card.vx *= 0.97;
+          card.vy *= 0.97;
+        }
+
+        card.x += card.vx * dt;
+        card.y += card.vy * dt;
 
         const padX = CARD_W / 2 + 4;
         const padY = CARD_H / 2 + 4;
         if (card.x < padX) { card.x = padX; card.vx *= -0.6; }
         if (card.x > cw - padX) { card.x = cw - padX; card.vx *= -0.6; }
-        if (card.y < padY) { card.y = padY; card.vy = Math.abs(card.vy) * 0.5; } // bounce off ceiling
+        if (card.y < padY) { card.y = padY; card.vy = Math.abs(card.vy) * 0.6 + 0.3; } // bounce off ceiling with minimum push down
 
         // Substance bar collision — momentum bounce powered by scroll speed!
         const cardBottom = card.y + CARD_H / 2;
@@ -580,27 +765,42 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         const maxY = Math.min(ch - padY, barTop - CARD_H / 2);
         if (card.y > maxY) { card.y = maxY; card.vy = -0.4; }
 
-        // Center exclusion zone
+        // Center exclusion zone — soft push outward, strongly prefer horizontal
         const relX = card.x - cx;
         const relY = card.y - cy;
         if (Math.abs(relX) < exW && Math.abs(relY) < exH) {
-          const pushX = relX > 0 ? exW - relX : -(exW + relX);
-          const pushY = relY > 0 ? exH - relY : -(exH + relY);
-          if (Math.abs(pushX) < Math.abs(pushY)) card.vx += pushX * 0.04;
-          else card.vy += pushY * 0.04;
+          const overlapX = exW - Math.abs(relX);
+          const overlapY = exH - Math.abs(relY);
+          // Push horizontally (left/right) — this is always safe
+          card.vx += Math.sign(relX || (Math.random() > 0.5 ? 1 : -1)) * overlapX * 0.015;
+          // Only add vertical push if overlap is mostly vertical AND push downward
+          if (overlapY < overlapX * 0.5) {
+            card.vy += Math.abs(overlapY) * 0.008; // always push DOWN
+          }
+        }
+
+        // Anti-clustering: gentle force toward vertical center when too far from it
+        const verticalCenter = ch * 0.45;
+        const distFromCenter = card.y - verticalCenter;
+        if (Math.abs(distFromCenter) > ch * 0.3) {
+          card.vy -= Math.sign(distFromCenter) * 0.008;
         }
 
         // No gravity — molecules float freely in space
 
         card.vx += (Math.random() - 0.5) * 0.012;
         card.vy += (Math.random() - 0.5) * 0.01;
-        // Speed cap — higher for vertical to allow bounce arcs
-        const absVx = Math.abs(card.vx);
-        const absVy = Math.abs(card.vy);
-        if (absVx > 0.25) card.vx = Math.sign(card.vx) * 0.25;
-        if (absVy > 2.0) card.vy = Math.sign(card.vy) * 2.0;
-        card.vx *= 0.995;
-        card.vy *= 0.993;
+        // Speed cap — higher for vertical to allow bounce arcs, much higher for shake scatter
+        const speed = Math.sqrt(card.vx * card.vx + card.vy * card.vy);
+        const maxSpeed = speed > 3 ? 12 : 2; // allow high speed from shake/fling but cap drift
+        if (speed > maxSpeed) {
+          card.vx = (card.vx / speed) * maxSpeed;
+          card.vy = (card.vy / speed) * maxSpeed;
+        }
+        // Stronger damping at high speed, gentle at low speed
+        const damping = speed > 1.5 ? 0.975 : 0.995;
+        card.vx *= damping;
+        card.vy *= damping;
 
         // Jelly squish decay — spring back to normal
         card.squishX += (1 - card.squishX) * 0.15;
@@ -624,8 +824,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         }
       }
 
-      // ── Feature 2: Elastic collision with sparks ──
-      const sparks = sparksRef.current;
+      // ── Elastic collision — pinned cards act as immovable walls ──
       for (let i = 0; i < cards.length; i++) {
         for (let j = i + 1; j < cards.length; j++) {
           const a = cards[i], b = cards[j];
@@ -636,189 +835,147 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
             const nx = dx / dist, ny = dy / dist;
             const overlap = minDist - dist;
 
-            // Separate
-            a.x += nx * overlap * 0.5;
-            a.y += ny * overlap * 0.5;
-            b.x -= nx * overlap * 0.5;
-            b.y -= ny * overlap * 0.5;
+            // Separate — pinned cards don't move
+            if (a.pinned && b.pinned) {
+              // Both pinned — just separate equally
+              a.x += nx * overlap * 0.5;
+              b.x -= nx * overlap * 0.5;
+              a.y += ny * overlap * 0.5;
+              b.y -= ny * overlap * 0.5;
+            } else if (a.pinned) {
+              b.x -= nx * overlap;
+              b.y -= ny * overlap;
+            } else if (b.pinned) {
+              a.x += nx * overlap;
+              a.y += ny * overlap;
+            } else {
+              a.x += nx * overlap * 0.5;
+              a.y += ny * overlap * 0.5;
+              b.x -= nx * overlap * 0.5;
+              b.y -= ny * overlap * 0.5;
+            }
 
-            // Elastic velocity exchange along collision normal
+            // Elastic velocity exchange
             const dvx = a.vx - b.vx;
             const dvy = a.vy - b.vy;
             const dotN = dvx * nx + dvy * ny;
-            if (dotN > 0) { // only if approaching
-              a.vx -= dotN * nx * 0.9;
-              a.vy -= dotN * ny * 0.9;
-              b.vx += dotN * nx * 0.9;
-              b.vy += dotN * ny * 0.9;
+            if (dotN > 0) {
+              if (a.pinned) {
+                // Only b bounces — full reflection off wall
+                b.vx += dotN * nx * 1.1;
+                b.vy += dotN * ny * 1.1;
+              } else if (b.pinned) {
+                // Only a bounces
+                a.vx -= dotN * nx * 1.1;
+                a.vy -= dotN * ny * 1.1;
+              } else {
+                a.vx -= dotN * nx * 0.9;
+                a.vy -= dotN * ny * 0.9;
+                b.vx += dotN * nx * 0.9;
+                b.vy += dotN * ny * 0.9;
+              }
 
-              // Jelly squish on both
+              // Jelly squish on non-pinned cards
               const impactForce = Math.abs(dotN);
               const sq = Math.min(0.4, impactForce * 1.5);
-              a.squishX = 1 + sq; a.squishY = 1 - sq * 0.6;
-              b.squishX = 1 + sq; b.squishY = 1 - sq * 0.6;
-
-              // Spawn sparks at collision midpoint
-              if (impactForce > 0.15 && sparks.length < MAX_SPARKS) {
-                const midX = (a.x + b.x) / 2;
-                const midY = (a.y + b.y) / 2;
-                const hexA = compLookup.get(a.id)?.hex || "#fff";
-                const hexB = compLookup.get(b.id)?.hex || "#fff";
-                const sparkCount = Math.min(6, Math.floor(impactForce * 8));
-                for (let s = 0; s < sparkCount; s++) {
-                  const angle = Math.random() * Math.PI * 2;
-                  const speed = 0.5 + Math.random() * impactForce * 2;
-                  sparks.push({
-                    x: midX, y: midY,
-                    vx: Math.cos(angle) * speed,
-                    vy: Math.sin(angle) * speed,
-                    life: 0,
-                    hex: s % 2 === 0 ? hexA : hexB,
-                  });
-                }
-              }
+              if (!a.pinned) { a.squishX = 1 + sq; a.squishY = 1 - sq * 0.6; }
+              if (!b.pinned) { b.squishX = 1 + sq; b.squishY = 1 - sq * 0.6; }
             }
           }
         }
       }
 
-      // Update sparks
-      for (let i = sparks.length - 1; i >= 0; i--) {
-        const s = sparks[i];
-        s.x += s.vx;
-        s.y += s.vy;
-        s.vx *= 0.96;
-        s.vy *= 0.96;
-        s.life += 0.04;
-        if (s.life >= 1) sparks.splice(i, 1);
+      // Update shockwaves (gravity well release only — rare, low cost)
+      const shockwaves = shockwavesRef.current;
+      for (let i = shockwaves.length - 1; i >= 0; i--) {
+        const sw = shockwaves[i];
+        sw.life += 0.04;
+        sw.radius = sw.maxRadius * sw.life;
+        if (sw.life >= 1) shockwaves.splice(i, 1);
       }
 
-      // ── Canvas drawing: trails + sparks + constellation lines ──
+
+      // ── Canvas drawing (throttled to 30fps — visuals don't need 60fps) ──
       globalTime.current += 0.02;
-      if (lineFrameCount.current++ % 2 === 0) {
-        const cvs = linesCanvasRef.current;
-        if (cvs) {
-          const ctx = cvs.getContext("2d");
-          if (ctx) {
-            ctx.clearRect(0, 0, cw, ch);
+      if (lineFrameCount.current++ % 2 === 0 && cachedCtx) {
+        const ctx = cachedCtx;
+        ctx.clearRect(0, 0, cw, ch);
 
-            // Feature 1: Draw comet trails
-            for (const card of cards) {
-              if (card.trail.length < 2) continue;
-              const data = compLookup.get(card.id);
-              if (!data) continue;
-              const trail = card.trail;
-              for (let t = 1; t < trail.length; t++) {
-                const alpha = (t / trail.length) * 0.2;
-                const width = (t / trail.length) * 1.5;
-                ctx.strokeStyle = data.hex;
-                ctx.globalAlpha = alpha;
-                ctx.lineWidth = width;
-                ctx.lineCap = "round";
-                ctx.beginPath();
-                ctx.moveTo(trail[t - 1].x, trail[t - 1].y);
-                ctx.lineTo(trail[t].x, trail[t].y);
-                ctx.stroke();
-              }
-            }
-
-            // Feature 2: Draw sparks
-            for (const s of sparks) {
-              const alpha = 1 - s.life;
-              const radius = (1 - s.life) * 2.5;
-              ctx.globalAlpha = alpha * 0.9;
-              ctx.fillStyle = s.hex;
-              ctx.beginPath();
-              ctx.arc(s.x, s.y, radius, 0, Math.PI * 2);
-              ctx.fill();
-              // Glow
-              ctx.globalAlpha = alpha * 0.3;
-              ctx.beginPath();
-              ctx.arc(s.x, s.y, radius * 2.5, 0, Math.PI * 2);
-              ctx.fill();
-            }
-
-            // Feature 3: Hover pulse resonance glow (drawn as expanding rings)
-            const hId = hoveredIdRef.current;
-            if (hId) {
-              const hovData = compLookup.get(hId);
-              const hovCard = cards.find(c => c.id === hId);
-              if (hovData && hovCard) {
-                // Pulse ring on hovered molecule
-                const pulsePhase = (globalTime.current * 3) % 1;
-                const pulseR = 30 + pulsePhase * 40;
-                ctx.globalAlpha = (1 - pulsePhase) * 0.15;
-                ctx.strokeStyle = hovData.hex;
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                ctx.arc(hovCard.x, hovCard.y, pulseR, 0, Math.PI * 2);
-                ctx.stroke();
-
-                // Resonance: glow same-family molecules
-                for (const card of cards) {
-                  if (card.id === hId) continue;
-                  const cData = compLookup.get(card.id);
-                  if (!cData || cData.family !== hovData.family) continue;
-                  const resPulse = ((globalTime.current * 2) + Math.random() * 0.01) % 1;
-                  const resR = 20 + resPulse * 25;
-                  ctx.globalAlpha = (1 - resPulse) * 0.08;
-                  ctx.strokeStyle = cData.hex;
-                  ctx.lineWidth = 1;
-                  ctx.beginPath();
-                  ctx.arc(card.x, card.y, resR, 0, Math.PI * 2);
-                  ctx.stroke();
-                }
-              }
-            }
-
-            // Feature 4: Animated constellation lines with flowing dots
-            const CONNECTION_DIST = 220;
-            const t = globalTime.current;
-            for (let i = 0; i < cards.length; i++) {
-              const a = cards[i];
-              const famA = compLookup.get(a.id);
-              if (!famA) continue;
-              for (let j = i + 1; j < cards.length; j++) {
-                const b = cards[j];
-                const famB = compLookup.get(b.id);
-                if (!famB || famA.family !== famB.family) continue;
-                const ddx = a.x - b.x, ddy = a.y - b.y;
-                const distSq = ddx * ddx + ddy * ddy;
-                if (distSq < CONNECTION_DIST * CONNECTION_DIST && distSq > 0) {
-                  const dist = Math.sqrt(distSq);
-                  const baseAlpha = (1 - dist / CONNECTION_DIST);
-
-                  // Dashed line
-                  ctx.strokeStyle = famA.hex;
-                  ctx.globalAlpha = baseAlpha * 0.08;
-                  ctx.lineWidth = 0.6;
-                  ctx.setLineDash([4, 6]);
-                  ctx.lineDashOffset = -t * 20; // animate the dash
-                  ctx.beginPath();
-                  ctx.moveTo(a.x, a.y);
-                  ctx.lineTo(b.x, b.y);
-                  ctx.stroke();
-                  ctx.setLineDash([]);
-
-                  // Flowing dots along the line
-                  const dotCount = 2;
-                  for (let d = 0; d < dotCount; d++) {
-                    const phase = ((t * 0.5 + d / dotCount + i * 0.1) % 1);
-                    const px = a.x + (b.x - a.x) * phase;
-                    const py = a.y + (b.y - a.y) * phase;
-                    ctx.globalAlpha = baseAlpha * 0.25 * Math.sin(phase * Math.PI);
-                    ctx.fillStyle = famA.hex;
-                    ctx.beginPath();
-                    ctx.arc(px, py, 1.5, 0, Math.PI * 2);
-                    ctx.fill();
-                  }
-                }
-              }
-            }
-            ctx.globalAlpha = 1;
-            ctx.setLineDash([]);
+        // Comet trails — batch by color to minimize state changes
+        ctx.lineCap = "round";
+        for (const card of cards) {
+          if (card.trail.length < 2) continue;
+          const data = compLookup.get(card.id);
+          if (!data) continue;
+          ctx.strokeStyle = data.hex;
+          const trail = card.trail;
+          for (let t = 1; t < trail.length; t++) {
+            ctx.globalAlpha = (t / trail.length) * 0.2;
+            ctx.lineWidth = (t / trail.length) * 1.5;
+            ctx.beginPath();
+            ctx.moveTo(trail[t - 1].x, trail[t - 1].y);
+            ctx.lineTo(trail[t].x, trail[t].y);
+            ctx.stroke();
           }
         }
+
+        // Shockwave rings (gravity well release only)
+        for (const sw of shockwaves) {
+          ctx.globalAlpha = (1 - sw.life) * 0.35;
+          ctx.strokeStyle = sw.hex;
+          ctx.lineWidth = Math.max(0.5, (1 - sw.life) * 2);
+          ctx.beginPath();
+          ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // Gravity well visual
+        if (gwActive && gwStr > 0) {
+          const gt = globalTime.current;
+          // Simple pulsing rings (no radialGradient — expensive)
+          const ringCount = 3;
+          for (let r = 0; r < ringCount; r++) {
+            const ringRadius = 20 + r * 20 + Math.sin(gt * 3 + r) * 5;
+            const rotation = gt * (2 - r * 0.4);
+            ctx.globalAlpha = Math.min(gwStr * 6, 0.3) * (1 - r * 0.25);
+            ctx.strokeStyle = "#8b5cf6";
+            ctx.lineWidth = 1.2 - r * 0.3;
+            ctx.beginPath();
+            ctx.arc(gwX, gwY, ringRadius, rotation, rotation + Math.PI * 1.4);
+            ctx.stroke();
+          }
+          // Core dot
+          ctx.globalAlpha = Math.min(gwStr * 8, 0.5);
+          ctx.fillStyle = "#8b5cf6";
+          ctx.beginPath();
+          ctx.arc(gwX, gwY, 4 + Math.sin(gt * 6) * 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Constellation lines — simple solid lines (no dashes, no flowing dots)
+        const CONNECTION_DIST_SQ = 200 * 200;
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i < cards.length; i++) {
+          const a = cards[i];
+          const famA = compLookup.get(a.id);
+          if (!famA) continue;
+          for (let j = i + 1; j < cards.length; j++) {
+            const b = cards[j];
+            const famB = compLookup.get(b.id);
+            if (!famB || famA.family !== famB.family) continue;
+            const ddx = a.x - b.x, ddy = a.y - b.y;
+            const distSq = ddx * ddx + ddy * ddy;
+            if (distSq < CONNECTION_DIST_SQ) {
+              ctx.globalAlpha = (1 - Math.sqrt(distSq) / 200) * 0.07;
+              ctx.strokeStyle = famA.hex;
+              ctx.beginPath();
+              ctx.moveTo(a.x, a.y);
+              ctx.lineTo(b.x, b.y);
+              ctx.stroke();
+            }
+          }
+        }
+        ctx.globalAlpha = 1;
       }
 
       const f = filterRef.current;
@@ -843,7 +1000,15 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       window.removeEventListener("resize", onResize);
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("scroll", onScroll);
+      document.removeEventListener("mousedown", onGwMouseDown);
+      document.removeEventListener("mousemove", onGwMouseMove);
+      window.removeEventListener("mouseup", endGravityWell);
+      document.removeEventListener("touchstart", onGwTouchStart);
+      document.removeEventListener("touchmove", onGwTouchMove);
+      window.removeEventListener("touchend", endGravityWell);
+      window.removeEventListener("touchcancel", endGravityWell);
       container.removeEventListener("mouseleave", onMouseLeave);
+      if (gravityWellRef.current.timer) clearTimeout(gravityWellRef.current.timer);
       cancelAnimationFrame(animRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1089,14 +1254,78 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
               tooltipPos.current = { x: e.clientX, y: e.clientY };
             }}
             onMouseLeave={() => setHoveredId(null)}
+            onClick={() => toggleSelect(compound.id)}
+            onMouseDown={(e) => {
+              // Feature 9: Start flick tracking
+              e.stopPropagation();
+              flickRef.current = { id: compound.id, x: e.clientX, y: e.clientY, time: Date.now() };
+            }}
+            onMouseUp={(e) => {
+              const flick = flickRef.current;
+              if (flick.id !== compound.id) return;
+              const dt = Date.now() - flick.time;
+              const dx = e.clientX - flick.x;
+              const dy = e.clientY - flick.y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              // Quick swipe: < 300ms and > 20px distance
+              if (dt < 300 && dist > 20) {
+                const card = cardsRef.current.find(c => c.id === compound.id);
+                if (card && !card.pinned) {
+                  const speed = Math.min(dist / dt * 8, 15); // scale up, cap at 15
+                  card.vx = (dx / dist) * speed;
+                  card.vy = (dy / dist) * speed;
+                  card.squishX = 1.3;
+                  card.squishY = 0.7;
+                }
+              }
+              flickRef.current = { id: null, x: 0, y: 0, time: 0 };
+            }}
+            onDoubleClick={() => {
+              // Feature 7: Toggle pin
+              const card = cardsRef.current.find(c => c.id === compound.id);
+              if (card) {
+                card.pinned = !card.pinned;
+                if (card.pinned) {
+                  card.vx = 0;
+                  card.vy = 0;
+                  pinnedIdsRef.current.add(compound.id);
+                } else {
+                  pinnedIdsRef.current.delete(compound.id);
+                }
+                // Force re-render for pin visual
+                setPinnedIds(new Set(pinnedIdsRef.current));
+              }
+            }}
           >
             {/* The card IS the molecular structure */}
             <div className="relative">
+              {/* Feature 7: Pin indicator — pulsing ring */}
+              {pinnedIds.has(compound.id) && (
+                <div
+                  className="absolute -inset-2 rounded-2xl pointer-events-none"
+                  style={{
+                    border: `1.5px solid ${hex}`,
+                    boxShadow: `0 0 10px ${hex}50, 0 0 20px ${hex}20`,
+                    animation: "pulse 1.5s ease-in-out infinite",
+                  }}
+                />
+              )}
+              {/* Selection ring */}
+              {selectedIds.includes(compound.id) && (
+                <div
+                  className="absolute -inset-1.5 rounded-2xl pointer-events-none"
+                  style={{
+                    border: `2px solid ${hex}`,
+                    boxShadow: `0 0 12px ${hex}60, inset 0 0 8px ${hex}20`,
+                    animation: "pulse 2s ease-in-out infinite",
+                  }}
+                />
+              )}
               {/* Soft glow behind the structure */}
               <div
                 className="absolute inset-0 rounded-2xl"
                 style={{
-                  background: `radial-gradient(ellipse at 50% 50%, ${hex}12 0%, transparent 70%)`,
+                  background: `radial-gradient(ellipse at 50% 50%, ${hex}${selectedIds.includes(compound.id) ? '25' : '12'} 0%, transparent 70%)`,
                 }}
               />
 
@@ -1115,6 +1344,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
                   }}
                 />
                 <span className="text-[8px] font-bold text-white/90 tracking-tight" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.7)" }}>
+                  {pinnedIds.has(compound.id) && <span className="text-[7px] mr-0.5" style={{ color: hex }}>&#x25C9;</span>}
                   {compound.name}
                 </span>
                 <span
@@ -1141,6 +1371,92 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
         );
       })}
     </div>
+
+    {/* ── Comparison Panel ── slides up when 2+ molecules selected */}
+    {selectedIds.length >= 2 && (
+      <div
+        className="fixed bottom-0 left-0 right-0 z-[60] animate-slideUp"
+        style={{
+          background: "linear-gradient(180deg, rgba(6,9,15,0.97) 0%, rgba(6,9,15,0.99) 100%)",
+          borderTop: "1px solid rgba(255,255,255,0.08)",
+          backdropFilter: "blur(24px)",
+          boxShadow: "0 -8px 40px rgba(0,0,0,0.5), 0 0 30px rgba(26,154,138,0.06)",
+        }}
+      >
+        {/* Header row */}
+        <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono font-bold text-[#1a9a8a]">比較モード</span>
+            <span className="text-[9px] font-mono text-white/30">{selectedIds.length}/3 選択</span>
+          </div>
+          <button
+            onClick={() => setSelectedIds([])}
+            className="text-[9px] font-mono text-white/40 hover:text-white/80 px-2 py-1 rounded hover:bg-white/[0.04] transition-colors cursor-pointer"
+          >
+            クリア ✕
+          </button>
+        </div>
+
+        {/* Comparison grid */}
+        <div className="px-4 py-3 overflow-x-auto">
+          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${selectedIds.length}, minmax(140px, 1fr))` }}>
+            {selectedIds.map((id) => {
+              const c = mockCompounds.find((m) => m.id === id);
+              if (!c) return null;
+              const cHex = statusHex[c.legal_status_japan];
+              return (
+                <div
+                  key={id}
+                  className="rounded-xl p-3 space-y-2"
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.02)",
+                    border: `1px solid ${cHex}30`,
+                  }}
+                >
+                  {/* Name + remove */}
+                  <div className="flex items-start justify-between gap-1">
+                    <div>
+                      <div className="text-[11px] font-bold text-white/90">{c.name}</div>
+                      {c.aliases?.[0] && (
+                        <div className="text-[8px] font-mono text-white/30 truncate">{c.aliases[0]}</div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => toggleSelect(id)}
+                      className="text-[9px] text-white/20 hover:text-white/60 cursor-pointer shrink-0 mt-0.5"
+                    >✕</button>
+                  </div>
+
+                  {/* Status badge */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cHex, boxShadow: `0 0 6px ${cHex}80` }} />
+                    <span className="text-[9px] font-mono font-bold" style={{ color: cHex }}>
+                      {statusLabels[c.legal_status_japan]}
+                    </span>
+                  </div>
+
+                  {/* Data rows */}
+                  <div className="space-y-1.5">
+                    <CompareRow label="リスク" value={riskLabels[c.risk_level]} color={riskHex[c.risk_level]} />
+                    <CompareRow label="分類" value={c.chemical_family || "—"} />
+                    <CompareRow label="種別" value={c.natural_or_synthetic === "natural" ? "天然" : c.natural_or_synthetic === "synthetic" ? "合成" : "—"} />
+                    <CompareRow label="更新日" value={c.legal_status_updated_at?.slice(0, 10) || "—"} />
+                  </div>
+
+                  {/* Effects summary */}
+                  <div className="pt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                    <div className="text-[7px] font-mono text-white/25 mb-0.5">概要</div>
+                    <div className="text-[8px] text-white/50 leading-relaxed line-clamp-3">
+                      {c.effects_summary || "—"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }
