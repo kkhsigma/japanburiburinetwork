@@ -2871,14 +2871,14 @@ function CameraController({
   const progress = useRef(0);
   const arrived = useRef(false);
   const travelCurve = useRef<THREE.QuadraticBezierCurve3 | null>(null);
-  const finalTarget = useRef<THREE.Vector3 | null>(null);
+  const destPos = useRef<THREE.Vector3 | null>(null);
 
   useFrame(() => {
     if (!travelTarget) {
       progress.current = 0;
       arrived.current = false;
       travelCurve.current = null;
-      finalTarget.current = null;
+      destPos.current = null;
       return;
     }
 
@@ -2889,66 +2889,51 @@ function CameraController({
       : WORLDS.find((w) => w.id === travelTarget)?.position;
     if (!worldPos) return;
 
-    // Create the curved path from origin to target (like the golden path)
+    // Create the curved path ON the golden path (from ORIGIN to target)
     if (!travelCurve.current) {
-      const dest = new THREE.Vector3(...worldPos);
+      const start = new THREE.Vector3(...ORIGIN);
+      const end = new THREE.Vector3(...worldPos);
+      destPos.current = end.clone();
 
-      // Calculate final camera position (offset from destination)
-      let offset: THREE.Vector3;
-      if (travelTarget === "blog") {
-        offset = dest.clone().normalize().multiplyScalar(-3.5);
-        offset.y += 1.0;
-      } else {
-        offset = dest.clone().normalize().multiplyScalar(3.5);
-        offset.y += 1.5;
-      }
-      finalTarget.current = dest.clone().add(offset);
+      // Same curve formula as GoldenPath
+      const mid = new THREE.Vector3().lerpVectors(start, end, 0.5);
+      mid.y += Math.max(1.2, start.distanceTo(end) * 0.1);
 
-      // Start from slightly above origin (where the sun is)
-      const start = new THREE.Vector3(0, 2, 4);
-
-      // Create curved path similar to golden path
-      const mid = new THREE.Vector3().lerpVectors(start, finalTarget.current, 0.5);
-      mid.y += Math.max(2, start.distanceTo(finalTarget.current) * 0.15);
-
-      travelCurve.current = new THREE.QuadraticBezierCurve3(start, mid, finalTarget.current);
+      travelCurve.current = new THREE.QuadraticBezierCurve3(start, mid, end);
     }
 
-    // Slower three-phase speed: slow start → cruise → slow approach
+    // Slower three-phase speed
     const p = progress.current;
     let speed: number;
     if (p < 0.2) {
-      speed = 0.002 + easeOutCubic(p / 0.2) * 0.006; // slower accelerate
-    } else if (p < 0.75) {
-      speed = 0.008; // slower cruise
+      speed = 0.002 + easeOutCubic(p / 0.2) * 0.005;
+    } else if (p < 0.8) {
+      speed = 0.007;
     } else {
-      speed = 0.008 * (1 - easeOutCubic((p - 0.75) / 0.25) * 0.85); // slower decelerate
+      speed = 0.007 * (1 - easeOutCubic((p - 0.8) / 0.2) * 0.9);
     }
     progress.current = Math.min(progress.current + speed, 1);
 
-    // Get position along the curved path
     const ease = easeInOutCubic(progress.current);
-    const curvePos = travelCurve.current.getPoint(ease);
-    camera.position.copy(curvePos);
 
-    // FOV zoom effect — widen during cruise, narrow on approach
+    // Position camera slightly above the golden path
+    const pathPos = travelCurve.current.getPoint(ease);
+    camera.position.set(pathPos.x, pathPos.y + 0.8, pathPos.z);
+
+    // Look ahead along the path (in the direction of travel toward the target)
+    const lookAhead = Math.min(ease + 0.15, 1);
+    const lookTarget = travelCurve.current.getPoint(lookAhead);
+    camera.lookAt(lookTarget);
+
+    // FOV zoom effect
     const fovBase = 45;
     let fovOffset = 0;
-    if (p > 0.1 && p < 0.8) {
-      const fp = (p - 0.1) / 0.7;
-      fovOffset = Math.sin(fp * Math.PI) * 12;
+    if (p > 0.1 && p < 0.85) {
+      const fp = (p - 0.1) / 0.75;
+      fovOffset = Math.sin(fp * Math.PI) * 10;
     }
     (camera as THREE.PerspectiveCamera).fov = fovBase + fovOffset;
     (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
-
-    // Look at the destination, transitioning smoothly
-    const dest = new THREE.Vector3(...worldPos);
-    const look = new THREE.Vector3().lerpVectors(
-      new THREE.Vector3(0, 0, 0),
-      dest,
-      Math.min(ease * 1.5, 1)
-    );
-    camera.lookAt(look);
 
     if (progress.current >= 1) {
       arrived.current = true;
