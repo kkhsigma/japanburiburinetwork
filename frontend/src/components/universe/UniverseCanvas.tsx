@@ -1054,7 +1054,7 @@ function DebrisField({
   color: string;
   bobPhase: number;
 }) {
-  const count = 16;
+  const count = 10;
   const groupRef = useRef<THREE.Group>(null);
 
   // Pre-generate debris orbits with varied parameters
@@ -1133,7 +1133,7 @@ function DebrisField({
   });
 
   // Dust ring (flat particle ring around planet)
-  const dustCount = 30;
+  const dustCount = 18;
   const dustGeo = useMemo(() => {
     const g = new THREE.BufferGeometry();
     const pos = new Float32Array(dustCount * 3);
@@ -1650,7 +1650,7 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
   }, []);
 
   // Light rays (shooting star style) that get sucked into the book
-  const rayCount = 16;
+  const rayCount = 10;
   const RAY_SEGMENTS = 14;
   const raysGroupRef = useRef<THREE.Group>(null);
 
@@ -3734,7 +3734,7 @@ function DistantGalaxies() {
     };
 
     // Target number of galaxies
-    const targetCount = 45;
+    const targetCount = 25;
     let attempts = 0;
     const maxAttempts = 500;
 
@@ -3967,7 +3967,7 @@ function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterPr
 
   // ─── DENSE STAR FIELD - Many sharp pinpoint stars ───────────
   const starData = useMemo(() => {
-    const count = Math.floor(350 * density); // Way more stars
+    const count = Math.floor(180 * density); // Optimized count
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
@@ -4026,7 +4026,7 @@ function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterPr
 
   // ─── BRIGHT PROMINENT STARS - Fewer but eye-catching ────────
   const brightStarData = useMemo(() => {
-    const count = Math.floor(25 * density);
+    const count = Math.floor(15 * density);
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
@@ -4065,7 +4065,7 @@ function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterPr
 
   // ─── DUST CLOUDS - Medium soft particles ────────────────────
   const dustData = useMemo(() => {
-    const count = Math.floor(120 * density);
+    const count = Math.floor(60 * density);
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
@@ -4111,7 +4111,7 @@ function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterPr
 
   // ─── FINE DUST - Ultra-fine grain texture ───────────────────
   const fineDustData = useMemo(() => {
-    const count = Math.floor(200 * density);
+    const count = Math.floor(100 * density);
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
@@ -4148,7 +4148,7 @@ function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterPr
 
   // ─── STELLAR NURSERY - Bright pink/magenta HII regions ──────
   const nurseryData = useMemo(() => {
-    const count = Math.floor(35 * density);
+    const count = Math.floor(18 * density);
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
@@ -4187,7 +4187,7 @@ function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterPr
 
   // ─── FILAMENTS - Wispy dust streaks ─────────────────────────
   const filamentData = useMemo(() => {
-    const count = Math.floor(80 * density);
+    const count = Math.floor(40 * density);
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
@@ -4243,7 +4243,7 @@ function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterPr
 
   // ─── DEBRIS ROCKS ───────────────────────────────────────────
   const debrisData = useMemo(() => {
-    const count = Math.floor(40 * density);
+    const count = Math.floor(20 * density);
     const dummy = new THREE.Object3D();
     const matrices: THREE.Matrix4[] = [];
     const rotationSpeeds: { x: number; y: number; z: number }[] = [];
@@ -4286,7 +4286,7 @@ function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterPr
 
   // ─── COMETS WITH TRAILS ─────────────────────────────────────
   const cometData = useMemo(() => {
-    const cometCount = Math.floor(8 * density);
+    const cometCount = Math.floor(4 * density);
     const trailLength = 12;
     const totalParticles = cometCount * trailLength;
 
@@ -4580,9 +4580,9 @@ function MilkyWayBands() {
 
     // Add depth layers
     const depthLayers = [
-      { dist: 30, count: 6, scaleRange: [5, 12], densityRange: [0.3, 0.6] },
-      { dist: 60, count: 8, scaleRange: [15, 30], densityRange: [0.6, 1.0] },
-      { dist: 100, count: 5, scaleRange: [35, 55], densityRange: [0.8, 1.3] },
+      { dist: 30, count: 3, scaleRange: [5, 12], densityRange: [0.3, 0.6] },
+      { dist: 60, count: 4, scaleRange: [15, 30], densityRange: [0.6, 1.0] },
+      { dist: 100, count: 3, scaleRange: [35, 55], densityRange: [0.8, 1.3] },
     ];
 
     depthLayers.forEach((layer) => {
@@ -4658,7 +4658,7 @@ function Nebula() {
 // ─── Warp Streaks (camera travel effect) ────────────────
 
 function WarpStreaks({ active }: { active: boolean }) {
-  const count = 60;
+  const count = 35;
   const ref = useRef<THREE.Points>(null);
   const { camera } = useThree();
 
@@ -5062,7 +5062,7 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
       <Stars
         radius={120}
         depth={70}
-        count={800}
+        count={500}
         factor={2}
         saturation={0}
         fade
