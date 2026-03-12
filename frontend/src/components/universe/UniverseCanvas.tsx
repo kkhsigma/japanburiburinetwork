@@ -1388,6 +1388,99 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
   const spineMaterial = useLeatherMaterial("#251030", "#351545");
   const pagesMaterial = usePagesMaterial();
 
+  // Wormhole portal shader - swirling vortex effect
+  const wormholeRef = useRef<THREE.Mesh>(null);
+  const wormholeUniforms = useMemo(() => ({
+    uTime: { value: 0 },
+    uIntensity: { value: 0 },
+  }), []);
+
+  const wormholeMaterial = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      uniforms: wormholeUniforms,
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float uTime;
+        uniform float uIntensity;
+        varying vec2 vUv;
+
+        void main() {
+          vec2 center = vec2(0.5, 0.5);
+          vec2 uv = vUv - center;
+
+          // Use elliptical distance for rectangular shape
+          vec2 scaled = uv * vec2(1.0, 1.25); // Adjust for aspect ratio
+          float dist = length(scaled);
+          float angle = atan(uv.y, uv.x);
+
+          // Swirling vortex - faster and more dramatic
+          float spiral = angle + dist * 12.0 - uTime * 4.0;
+          float arms = sin(spiral * 6.0) * 0.5 + 0.5;
+
+          // Multiple spiral layers
+          float spiral2 = angle - dist * 8.0 + uTime * 2.5;
+          float arms2 = sin(spiral2 * 4.0) * 0.5 + 0.5;
+
+          // Event horizon - rectangular fade
+          vec2 edgeDist = abs(uv) * 2.0;
+          float rectDist = max(edgeDist.x, edgeDist.y);
+          float core = smoothstep(1.0, 0.0, rectDist);
+          float ring = smoothstep(0.8, 0.5, rectDist) * smoothstep(0.2, 0.4, rectDist);
+
+          // Pulsing energy waves
+          float pulse = sin(uTime * 5.0 - dist * 15.0) * 0.4 + 0.6;
+          float pulse2 = sin(uTime * 3.0 + dist * 10.0) * 0.3 + 0.7;
+
+          // Color gradient - bright golden core to warm amber edge
+          vec3 coreColor = vec3(1.0, 0.95, 0.7) * 2.5;
+          vec3 midColor = vec3(1.0, 0.7, 0.3) * 2.0;
+          vec3 edgeColor = vec3(0.9, 0.5, 0.1);
+
+          vec3 color = mix(edgeColor, midColor, core);
+          color = mix(color, coreColor, core * core * core);
+
+          // Add spiral arms - layered golden
+          color += arms * ring * vec3(1.0, 0.8, 0.4) * 1.2;
+          color += arms2 * ring * vec3(1.0, 0.7, 0.3) * 0.6;
+
+          // Bright center vortex
+          float centerGlow = smoothstep(0.3, 0.0, dist) * pulse;
+          color += centerGlow * vec3(2.0, 1.5, 1.0);
+
+          // Energy tendrils
+          float tendril = sin(angle * 8.0 + uTime * 6.0 + dist * 20.0);
+          tendril = pow(max(0.0, tendril), 4.0) * ring * pulse2;
+          color += tendril * vec3(1.0, 0.7, 0.3) * 1.5;
+
+          // Sparkles and stars
+          float sparkle = fract(sin(dot(uv * 80.0, vec2(12.9898, 78.233)) + uTime * 2.0) * 43758.5453);
+          sparkle = pow(sparkle, 25.0) * core * 4.0;
+          color += sparkle * vec3(1.0, 0.95, 0.8);
+
+          // Edge glow - warm golden
+          float edgeGlow = smoothstep(1.0, 0.7, rectDist) * (1.0 - smoothstep(0.7, 0.5, rectDist));
+          color += edgeGlow * vec3(1.0, 0.6, 0.2) * pulse * 0.8;
+
+          // Alpha - visible across the page
+          float alpha = core * uIntensity;
+          alpha = max(alpha, edgeGlow * 0.5 * uIntensity);
+
+          gl_FragColor = vec4(color * 1.3, alpha);
+        }
+      `,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+  }, [wormholeUniforms]);
+
   // Front cover geometry (pivots at spine)
   const frontCoverGeo = useMemo(() => {
     const geo = new THREE.BoxGeometry(bookW, bookH, coverThick, 8, 8, 1);
@@ -1396,7 +1489,7 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
   }, []);
 
   // 3D Orbiting puzzle pieces - 4 shapes
-  const puzzleCount = 16;
+  const puzzleCount = 8;
   const puzzleMeshRef0 = useRef<THREE.InstancedMesh>(null);
   const puzzleMeshRef1 = useRef<THREE.InstancedMesh>(null);
   const puzzleMeshRef2 = useRef<THREE.InstancedMesh>(null);
@@ -1576,6 +1669,91 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
     });
   }, []);
 
+  // Light rays (shooting star style) that get sucked into the book
+  const rayCount = 16;
+  const RAY_SEGMENTS = 14;
+  const raysGroupRef = useRef<THREE.Group>(null);
+
+  // Shader for rays with gradient alpha - brighter glow
+  const rayVertShader = /* glsl */ `
+    attribute float aAlpha;
+    varying float vAlpha;
+    void main() {
+      vAlpha = aAlpha;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `;
+
+  const rayFragShader = /* glsl */ `
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    varying float vAlpha;
+    void main() {
+      float glow = vAlpha * vAlpha; // Exponential glow at head
+      vec3 brightColor = uColor * (1.5 + glow * 2.5); // Much brighter
+      gl_FragColor = vec4(brightColor, vAlpha * uOpacity);
+    }
+  `;
+
+  // Create geometries and materials for each ray
+  const rayGeos = useMemo(() => {
+    return Array.from({ length: rayCount }, () => {
+      const geo = new THREE.BufferGeometry();
+      const pos = new Float32Array(RAY_SEGMENTS * 3);
+      const alphas = new Float32Array(RAY_SEGMENTS);
+      for (let i = 0; i < RAY_SEGMENTS; i++) {
+        alphas[i] = i / (RAY_SEGMENTS - 1); // 0 at tail, 1 at head
+      }
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute("aAlpha", new THREE.Float32BufferAttribute(alphas, 1));
+      return geo;
+    });
+  }, []);
+
+  const rayUniforms = useMemo(() => {
+    return Array.from({ length: rayCount }, () => ({
+      uColor: { value: new THREE.Color(1.2, 0.95, 0.6) }, // bright warm golden
+      uOpacity: { value: 0 },
+    }));
+  }, []);
+
+  const rayMats = useMemo(() => {
+    return rayUniforms.map((u) =>
+      new THREE.ShaderMaterial({
+        uniforms: u,
+        vertexShader: rayVertShader,
+        fragmentShader: rayFragShader,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      })
+    );
+  }, [rayUniforms]);
+
+  // Ray state
+  interface BookRay {
+    active: boolean;
+    startPos: THREE.Vector3;
+    progress: number;
+    speed: number;
+    length: number;
+  }
+
+  const rayStates = useRef<BookRay[]>([]);
+
+  // Initialize ray states
+  if (rayStates.current.length === 0) {
+    for (let i = 0; i < rayCount; i++) {
+      rayStates.current.push({
+        active: false,
+        startPos: new THREE.Vector3(),
+        progress: 0,
+        speed: 0.8 + Math.random() * 0.6,
+        length: 0.8 + Math.random() * 0.6,
+      });
+    }
+  }
+
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
 
@@ -1601,6 +1779,10 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
       pagesMaterial.uniforms.uTime.value = t;
       pagesMaterial.uniforms.uOpenAmount.value = openAmount.current;
     }
+
+    // Update wormhole portal - only visible when book is open
+    wormholeUniforms.uTime.value = t;
+    wormholeUniforms.uIntensity.value = openAmount.current;
 
     // Update orbiting puzzle pieces - absorption when passing in front of open page
     if (openAmount.current > 0.1) {
@@ -1679,8 +1861,71 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
       puzzleMeshRefs.forEach(ref => {
         if (ref.current) ref.current.instanceMatrix.needsUpdate = true;
       });
+
+      // Update shooting-star style light rays with wormhole spiral
+      for (let i = 0; i < rayCount; i++) {
+        const ray = rayStates.current[i];
+
+        // Spawn new rays randomly
+        if (!ray.active && Math.random() < 0.025) {
+          ray.active = true;
+          ray.progress = 0;
+          ray.speed = 0.5 + Math.random() * 0.4;
+          ray.length = 0.5 + Math.random() * 0.4;
+          // Start from random position around the book
+          const angle = Math.random() * Math.PI * 2;
+          const dist = 4.0 + Math.random() * 2.5;
+          const yOff = (Math.random() - 0.5) * 2.5;
+          ray.startPos.set(
+            Math.cos(angle) * dist,
+            yOff,
+            Math.sin(angle) * dist
+          );
+        }
+
+        if (ray.active) {
+          ray.progress += 0.012 * ray.speed;
+
+          if (ray.progress >= 1) {
+            ray.active = false;
+            rayUniforms[i].uOpacity.value = 0;
+          } else {
+            // Build trail segments from tail to head with wormhole spiral
+            const pos = rayGeos[i].attributes.position.array as Float32Array;
+            for (let seg = 0; seg < RAY_SEGMENTS; seg++) {
+              const frac = seg / (RAY_SEGMENTS - 1); // 0=tail, 1=head
+              const segProgress = Math.max(0, ray.progress - ray.length * (1 - frac) * 0.12);
+              const segEase = segProgress * segProgress * segProgress; // Cubic ease for acceleration
+
+              // Base position moving towards target
+              let baseX = ray.startPos.x + (pageTarget.x - ray.startPos.x) * segEase;
+              let baseY = ray.startPos.y + (pageTarget.y - ray.startPos.y) * segEase;
+              let baseZ = ray.startPos.z + (pageTarget.z - ray.startPos.z) * segEase;
+
+              // Add spiral/wormhole effect - tighter spiral as it gets closer
+              const spiralIntensity = segEase * segEase * 1.2; // Increases near target
+              const spiralAngle = segProgress * Math.PI * 6 + i * 0.5; // Multiple rotations
+              const spiralRadius = (1 - segEase) * 0.8 * spiralIntensity;
+
+              baseX += Math.cos(spiralAngle) * spiralRadius;
+              baseY += Math.sin(spiralAngle) * spiralRadius * 0.6;
+              baseZ += Math.sin(spiralAngle * 0.7) * spiralRadius * 0.4;
+
+              pos[seg * 3] = baseX;
+              pos[seg * 3 + 1] = baseY;
+              pos[seg * 3 + 2] = baseZ;
+            }
+            rayGeos[i].attributes.position.needsUpdate = true;
+
+            // Brighter glow, fade in/out
+            const fadeIn = Math.min(1, ray.progress * 5);
+            const fadeOut = 1 - Math.pow(ray.progress, 2.5);
+            rayUniforms[i].uOpacity.value = fadeIn * fadeOut * openAmount.current * 1.2;
+          }
+        }
+      }
     } else {
-      // Book closed - hide all pieces
+      // Book closed - hide all pieces and rays
       puzzleMeshRefs.forEach((ref, shapeIdx) => {
         if (!ref.current) return;
         for (let j = 0; j < piecesPerShape[shapeIdx]; j++) {
@@ -1690,6 +1935,11 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
         }
         ref.current.instanceMatrix.needsUpdate = true;
       });
+
+      // Hide rays when book closed
+      for (let i = 0; i < rayCount; i++) {
+        rayUniforms[i].uOpacity.value = 0;
+      }
     }
   });
 
@@ -1707,33 +1957,6 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
 
   return (
     <group ref={groupRef}>
-      {/* Soft warm glow — larger and brighter */}
-      <mesh>
-        <sphereGeometry args={[3.0, 12, 8]} />
-        <meshBasicMaterial
-          color={new THREE.Color(1.5, 1.0, 0.3)}
-          transparent
-          opacity={0.06}
-          side={THREE.BackSide}
-          toneMapped={false}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-        />
-      </mesh>
-      {/* Inner bright glow */}
-      <mesh>
-        <sphereGeometry args={[1.8, 12, 8]} />
-        <meshBasicMaterial
-          color={new THREE.Color(2.0, 1.5, 0.5)}
-          transparent
-          opacity={0.04}
-          side={THREE.BackSide}
-          toneMapped={false}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-        />
-      </mesh>
-
       <group
         onClick={(e) => { e.stopPropagation(); onSelect("blog"); }}
         onPointerOver={handlePointerOver}
@@ -1758,6 +1981,7 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
           <boxGeometry args={[bookW * 0.9, bookH * 0.92, bookD * 0.7, 4, 4, 4]} />
           <primitive object={pagesMaterial} attach="material" />
         </mesh>
+
 
         {/* Point light inside book - creates real glow when open */}
         <pointLight
@@ -1817,6 +2041,16 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
         </group>
       </group>
 
+      {/* Wormhole portal - on the front page of the book */}
+      <mesh
+        ref={wormholeRef}
+        position={[0.15, 0, bookD / 2 + 0.05]}
+        rotation={[0, 0, 0]}
+      >
+        <planeGeometry args={[bookW * 0.85, bookH * 0.88]} />
+        <primitive object={wormholeMaterial} attach="material" />
+      </mesh>
+
       {/* Orbiting 3D glowing puzzle pieces - 4 different shapes */}
       {puzzleGeos.map((geo, idx) => (
         <instancedMesh
@@ -1826,6 +2060,15 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
           rotation={[0.1, 0.3, 0]}
         />
       ))}
+
+      {/* Light rays (shooting star style) getting sucked into the book */}
+      <group ref={raysGroupRef}>
+        {rayGeos.map((geo, idx) => (
+          <line key={idx} geometry={geo}>
+            <primitive object={rayMats[idx]} attach="material" />
+          </line>
+        ))}
+      </group>
 
       {/* Label */}
       <Html position={[0, -1.8, 0]} center style={{ pointerEvents: "none", whiteSpace: "nowrap" }}>
@@ -2677,11 +2920,17 @@ function CameraController({
     const ease = easeInOutCubic(progress.current);
 
     const dest = new THREE.Vector3(...worldPos);
-    const offset = dest
-      .clone()
-      .normalize()
-      .multiplyScalar(3.5);
-    offset.y += 1.5;
+    let offset: THREE.Vector3;
+
+    if (travelTarget === "blog") {
+      // Book: position camera in front (towards origin), not behind
+      offset = dest.clone().normalize().multiplyScalar(-3.5);
+      offset.y += 1.0;
+    } else {
+      // Planets: position camera on the outside
+      offset = dest.clone().normalize().multiplyScalar(3.5);
+      offset.y += 1.5;
+    }
     const target = dest.clone().add(offset);
 
     camera.position.lerpVectors(startPos.current, target, ease);

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { motion } from "framer-motion";
-import { RotateCcw } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { RotateCcw, ChevronDown } from "lucide-react";
 import { UniverseCanvas } from "@/components/universe/UniverseCanvas";
 import { NavBar } from "@/components/universe/NavBar";
 import { SunRayTransition } from "@/components/universe/SunRayTransition";
@@ -19,6 +19,7 @@ export default function UniversePage() {
   const [skipIntro, setSkipIntro] = useState(true); // default to skip, check localStorage on mount
   const [canvasKey, setCanvasKey] = useState(0); // remount canvas for replay
   const [entryFade, setEntryFade] = useState(true); // fade-in from transition
+  const [hasScrolled, setHasScrolled] = useState(false); // hide scroll indicator after scrolling
 
   useEffect(() => {
     try {
@@ -40,9 +41,16 @@ export default function UniversePage() {
     };
     window.addEventListener("pageshow", onPageShow);
 
+    // Hide scroll indicator after user scrolls
+    const onScroll = () => {
+      if (window.scrollY > 50) setHasScrolled(true);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+
     return () => {
       clearTimeout(timer);
       window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("scroll", onScroll);
     };
   }, []);
 
@@ -117,6 +125,27 @@ export default function UniversePage() {
             <span className="hidden sm:inline">再生</span>
           </motion.button>
         )}
+
+        {/* Scroll indicator - fixed to bottom of viewport, hides after scrolling */}
+        <AnimatePresence>
+          {!hasScrolled && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.4 }}
+              exit={{ opacity: 0, transition: { duration: 0.3 } }}
+              transition={{ delay: 1, duration: 0.8 }}
+              className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 text-gray-400 pointer-events-none"
+            >
+              <span className="text-sm font-light tracking-[0.3em] uppercase">scroll</span>
+              <motion.div
+                animate={{ y: [0, 8, 0] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+              >
+                <ChevronDown size={24} strokeWidth={1.5} />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Gradient fade from canvas into dashboard */}
