@@ -3431,7 +3431,7 @@ const MINI_GALAXY_FRAG = /* glsl */ `
     return v;
   }
 
-  // ULTRA SHARP star field with crisp pinpoints
+  // PURE SHARP PINPOINT stars - NO glow, NO softness
   vec4 starField(vec2 uv, float density, float sizeBase, float threshold) {
     vec2 gv = fract(uv * density) - 0.5;
     vec2 id = floor(uv * density);
@@ -3449,40 +3449,35 @@ const MINI_GALAXY_FRAG = /* glsl */ `
           float d = length(gv - starPos);
 
           float magnitude = pow(rand.x - threshold, 0.4) / (1.0 - threshold);
-          float size = sizeBase * (0.15 + magnitude * 0.4);
+          float size = sizeBase * (0.08 + magnitude * 0.25);
 
-          // ULTRA SHARP star core - very steep exponential
-          float core = exp(-d * d / (size * size * 0.012));
+          // HARD CUTOFF - no soft glow at all
+          // Using pow with high exponent for near-binary falloff
+          float core = pow(max(0.0, 1.0 - d / (size * 0.015)), 12.0);
 
-          // Hot bright center for extra sharpness
-          float hotCenter = exp(-d * d / (size * size * 0.003)) * 0.8;
+          // Tiny bright center - pure point
+          float point = pow(max(0.0, 1.0 - d / (size * 0.006)), 20.0) * 1.5;
 
-          // Crisp diffraction spikes for bright stars
+          // Very thin crisp spikes - no soft falloff
           float spikes = 0.0;
-          if (magnitude > 0.4) {
-            float spikeStrength = (magnitude - 0.4) * 1.67;
-            float spike1 = exp(-abs(gv.x - starPos.x) * 200.0) * exp(-abs(gv.y - starPos.y) * 20.0);
-            float spike2 = exp(-abs(gv.y - starPos.y) * 200.0) * exp(-abs(gv.x - starPos.x) * 20.0);
-            spikes = (spike1 + spike2) * 0.35 * spikeStrength;
-
-            // Diagonal spikes for very bright stars
-            if (magnitude > 0.7) {
-              float diag1 = exp(-abs(gv.x - starPos.x - (gv.y - starPos.y)) * 150.0) * exp(-abs(gv.x - starPos.x + (gv.y - starPos.y)) * 25.0);
-              float diag2 = exp(-abs(gv.x - starPos.x + (gv.y - starPos.y)) * 150.0) * exp(-abs(gv.x - starPos.x - (gv.y - starPos.y)) * 25.0);
-              spikes += (diag1 + diag2) * 0.2 * (magnitude - 0.7) * 3.33;
-            }
+          if (magnitude > 0.5) {
+            float spikeStrength = (magnitude - 0.5) * 2.0;
+            // Extremely narrow spikes
+            float spike1 = pow(max(0.0, 1.0 - abs(gv.x - starPos.x) * 80.0), 8.0) * pow(max(0.0, 1.0 - abs(gv.y - starPos.y) * 15.0), 4.0);
+            float spike2 = pow(max(0.0, 1.0 - abs(gv.y - starPos.y) * 80.0), 8.0) * pow(max(0.0, 1.0 - abs(gv.x - starPos.x) * 15.0), 4.0);
+            spikes = (spike1 + spike2) * 0.5 * spikeStrength;
           }
 
-          float intensity = core + hotCenter + spikes;
+          float intensity = core + point + spikes;
 
           // Subtle twinkling
-          float twinkle = 0.88 + 0.12 * sin(uTime * (3.0 + rand.y * 6.0) + rand.x * 30.0);
+          float twinkle = 0.9 + 0.1 * sin(uTime * (3.0 + rand.y * 6.0) + rand.x * 30.0);
           intensity *= twinkle;
 
-          // Star color - mostly white with subtle tint
-          vec3 col = mix(vec3(1.0), uColorTint, 0.2 + rand.y * 0.3);
+          // Star color - white with subtle tint
+          vec3 col = mix(vec3(1.0), uColorTint, 0.15 + rand.y * 0.25);
 
-          starColor += col * intensity * magnitude * 2.2;
+          starColor += col * intensity * magnitude * 2.5;
           starAlpha += intensity * magnitude;
         }
       }
@@ -3558,29 +3553,29 @@ const MINI_GALAXY_FRAG = /* glsl */ `
     vec3 allStars = bgStars1.rgb + bgStars2.rgb + bgStars3.rgb + bgStars4.rgb + bgStars5.rgb;
     color += allStars * 0.6;
 
-    // === GALACTIC CORE - ULTRA SHARP ===
-    float coreSize = 0.04;
+    // === GALACTIC CORE - HARD SHARP, NO SOFT GLOW ===
+    float coreSize = 0.035;
 
-    // Ultra sharp concentrated core with hot center
-    float hotSpot = exp(-tiltDist * tiltDist / (coreSize * coreSize * 0.08)) * 3.0;
-    float innerCore = exp(-tiltDist * tiltDist / (coreSize * coreSize * 0.25)) * 2.0;
-    float midCore = exp(-tiltDist * tiltDist / (coreSize * coreSize * 1.5)) * 0.5;
-    float outerCore = exp(-tiltDist * tiltDist / (coreSize * coreSize * 6.0)) * 0.2;
+    // Hard cutoff core - no soft outer glow
+    float coreDist = tiltDist / coreSize;
+    float hotSpot = pow(max(0.0, 1.0 - coreDist * 3.0), 15.0) * 4.0;
+    float innerCore = pow(max(0.0, 1.0 - coreDist * 1.5), 8.0) * 2.5;
+    float midCore = pow(max(0.0, 1.0 - coreDist * 0.8), 5.0) * 0.6;
+    // No outer glow - removed completely
 
     // Multi-scale core grain texture
-    float coreGrain1 = fbmUltra(tiltedUV * 150.0 + uTime * 0.04);
-    float coreGrain2 = fbmUltra(tiltedUV * 280.0 - uTime * 0.025);
-    float coreGrain3 = fbmUltra(tiltedUV * 450.0 + uTime * 0.015);
-    innerCore *= 0.6 + coreGrain1 * 0.35 + coreGrain2 * 0.15 + coreGrain3 * 0.08;
-    hotSpot *= 0.8 + coreGrain1 * 0.25;
+    float coreGrain1 = fbmUltra(tiltedUV * 180.0 + uTime * 0.04);
+    float coreGrain2 = fbmUltra(tiltedUV * 320.0 - uTime * 0.025);
+    float coreGrain3 = fbmUltra(tiltedUV * 500.0 + uTime * 0.015);
+    innerCore *= 0.55 + coreGrain1 * 0.4 + coreGrain2 * 0.18 + coreGrain3 * 0.1;
+    hotSpot *= 0.75 + coreGrain1 * 0.3;
 
     // Core color - bright white hot center
-    vec3 coreCol = uColorTint * 1.4;
-    vec3 hotCol = mix(vec3(1.0), uColorTint, 0.15); // Almost white hot center
-    coreCol = mix(coreCol, vec3(1.0, 0.98, 0.95), innerCore * 0.4);
+    vec3 hotCol = mix(vec3(1.0), uColorTint, 0.1);
+    vec3 coreCol = uColorTint * 1.5;
 
-    color += hotCol * hotSpot + coreCol * (innerCore + midCore + outerCore);
-    totalAlpha += hotSpot * 0.95 + innerCore * 0.85 + midCore * 0.45 + outerCore * 0.2;
+    color += hotCol * hotSpot + coreCol * (innerCore + midCore);
+    totalAlpha += hotSpot * 0.98 + innerCore * 0.9 + midCore * 0.5;
 
     // === PRIMARY SPIRAL ARMS ===
     float arm1 = spiralArm(tiltedUV, 2.0, 2.6, time, 0.36);
