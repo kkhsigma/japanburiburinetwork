@@ -455,7 +455,7 @@ function ComparisonChart({
       opacity: 1,
       x: 0,
       transition: {
-        type: "spring",
+        type: "spring" as const,
         stiffness: 100,
         damping: 15,
       },
@@ -468,7 +468,7 @@ function ComparisonChart({
       opacity: 1,
       scale: 1,
       transition: {
-        type: "spring",
+        type: "spring" as const,
         stiffness: 150,
         damping: 12,
         delay: i * 0.05,
