@@ -501,6 +501,9 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
     const container = containerRef.current;
     if (!container) return;
 
+    // Copy ref to local variable for cleanup function
+    const gravityWell = gravityWellRef.current;
+
     const rect = container.getBoundingClientRect();
     sizeRef.current = { w: rect.width, h: rect.height };
 
@@ -1008,7 +1011,7 @@ export function FloatingCardsBg({ transitionState = "idle" }: FloatingCardsBgPro
       window.removeEventListener("touchend", endGravityWell);
       window.removeEventListener("touchcancel", endGravityWell);
       container.removeEventListener("mouseleave", onMouseLeave);
-      if (gravityWellRef.current.timer) clearTimeout(gravityWellRef.current.timer);
+      if (gravityWell.timer) clearTimeout(gravityWell.timer);
       cancelAnimationFrame(animRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
