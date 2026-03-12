@@ -2916,8 +2916,8 @@ function CameraController({
 
     const ease = easeInOutCubic(progress.current);
 
-    // Stop at 75% of the path so the planet is visible in front
-    const stopPoint = 0.75;
+    // Stop at 55% of the path so the planet is visible in front
+    const stopPoint = 0.55;
     const pathProgress = ease * stopPoint;
 
     // Position camera slightly above the golden path
