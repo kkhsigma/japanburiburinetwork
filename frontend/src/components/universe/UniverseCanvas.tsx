@@ -2868,83 +2868,90 @@ function CameraController({
   onArrive: () => void;
 }) {
   const { camera } = useThree();
-  const startPos = useRef<THREE.Vector3 | null>(null);
   const progress = useRef(0);
   const arrived = useRef(false);
-  const phase = useRef<"accelerate" | "cruise" | "decelerate">("accelerate");
+  const travelCurve = useRef<THREE.QuadraticBezierCurve3 | null>(null);
+  const finalTarget = useRef<THREE.Vector3 | null>(null);
 
   useFrame(() => {
     if (!travelTarget) {
-      startPos.current = null;
       progress.current = 0;
       arrived.current = false;
-      phase.current = "accelerate";
+      travelCurve.current = null;
+      finalTarget.current = null;
       return;
     }
 
     if (arrived.current) return;
-
-    if (!startPos.current) {
-      startPos.current = camera.position.clone();
-    }
 
     const worldPos = travelTarget === "blog"
       ? BOOK_POSITION
       : WORLDS.find((w) => w.id === travelTarget)?.position;
     if (!worldPos) return;
 
-    // Three-phase speed: slow start → fast cruise → slow approach
+    // Create the curved path from origin to target (like the golden path)
+    if (!travelCurve.current) {
+      const dest = new THREE.Vector3(...worldPos);
+
+      // Calculate final camera position (offset from destination)
+      let offset: THREE.Vector3;
+      if (travelTarget === "blog") {
+        offset = dest.clone().normalize().multiplyScalar(-3.5);
+        offset.y += 1.0;
+      } else {
+        offset = dest.clone().normalize().multiplyScalar(3.5);
+        offset.y += 1.5;
+      }
+      finalTarget.current = dest.clone().add(offset);
+
+      // Start from slightly above origin (where the sun is)
+      const start = new THREE.Vector3(0, 2, 4);
+
+      // Create curved path similar to golden path
+      const mid = new THREE.Vector3().lerpVectors(start, finalTarget.current, 0.5);
+      mid.y += Math.max(2, start.distanceTo(finalTarget.current) * 0.15);
+
+      travelCurve.current = new THREE.QuadraticBezierCurve3(start, mid, finalTarget.current);
+    }
+
+    // Slower three-phase speed: slow start → cruise → slow approach
     const p = progress.current;
     let speed: number;
-    if (p < 0.15) {
-      speed = 0.004 + easeOutCubic(p / 0.15) * 0.016; // accelerate
-      phase.current = "accelerate";
-    } else if (p < 0.7) {
-      speed = 0.02; // cruise
-      phase.current = "cruise";
+    if (p < 0.2) {
+      speed = 0.002 + easeOutCubic(p / 0.2) * 0.006; // slower accelerate
+    } else if (p < 0.75) {
+      speed = 0.008; // slower cruise
     } else {
-      speed = 0.02 * (1 - easeOutCubic((p - 0.7) / 0.3) * 0.85); // decelerate
-      phase.current = "decelerate";
+      speed = 0.008 * (1 - easeOutCubic((p - 0.75) / 0.25) * 0.85); // slower decelerate
     }
     progress.current = Math.min(progress.current + speed, 1);
+
+    // Get position along the curved path
     const ease = easeInOutCubic(progress.current);
-
-    const dest = new THREE.Vector3(...worldPos);
-    let offset: THREE.Vector3;
-
-    if (travelTarget === "blog") {
-      // Book: position camera in front (towards origin), not behind
-      offset = dest.clone().normalize().multiplyScalar(-3.5);
-      offset.y += 1.0;
-    } else {
-      // Planets: position camera on the outside
-      offset = dest.clone().normalize().multiplyScalar(3.5);
-      offset.y += 1.5;
-    }
-    const target = dest.clone().add(offset);
-
-    camera.position.lerpVectors(startPos.current, target, ease);
+    const curvePos = travelCurve.current.getPoint(ease);
+    camera.position.copy(curvePos);
 
     // FOV zoom effect — widen during cruise, narrow on approach
     const fovBase = 45;
     let fovOffset = 0;
-    if (p > 0.1 && p < 0.75) {
-      const fp = (p - 0.1) / 0.65;
-      fovOffset = Math.sin(fp * Math.PI) * 15; // widen up to +15 degrees
+    if (p > 0.1 && p < 0.8) {
+      const fp = (p - 0.1) / 0.7;
+      fovOffset = Math.sin(fp * Math.PI) * 12;
     }
     (camera as THREE.PerspectiveCamera).fov = fovBase + fovOffset;
     (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
 
+    // Look at the destination, transitioning smoothly
+    const dest = new THREE.Vector3(...worldPos);
     const look = new THREE.Vector3().lerpVectors(
       new THREE.Vector3(0, 0, 0),
       dest,
-      Math.min(ease * 1.3, 1) // look ahead faster than movement
+      Math.min(ease * 1.5, 1)
     );
     camera.lookAt(look);
 
     if (progress.current >= 1) {
       arrived.current = true;
-      // Reset FOV
       (camera as THREE.PerspectiveCamera).fov = fovBase;
       (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
       onArrive();
