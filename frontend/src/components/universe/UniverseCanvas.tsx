@@ -3,7 +3,6 @@
 import { useRef, useMemo, useState, useEffect, createContext, useContext, Fragment, Suspense, useCallback } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, Stars, Text, Billboard } from "@react-three/drei";
-import { motion, AnimatePresence } from "framer-motion";
 import * as THREE from "three";
 import { mockCompounds } from "@/lib/mock-data";
 
