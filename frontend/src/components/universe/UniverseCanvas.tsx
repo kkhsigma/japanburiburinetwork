@@ -2,7 +2,7 @@
 
 import { useRef, useMemo, useState, useEffect, createContext, useContext, Fragment, Suspense } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Html, Stars } from "@react-three/drei";
+import { OrbitControls, Html, Stars, Text, Billboard } from "@react-three/drei";
 import * as THREE from "three";
 import { mockCompounds } from "@/lib/mock-data";
 
@@ -205,8 +205,8 @@ interface WorldDef {
 const WORLDS: WorldDef[] = [
   {
     id: "cannabis",
-    label: "カンナビス",
-    sublabel: "カンナビス規制",
+    label: "Cannabis",
+    sublabel: "Cannabis Regulations",
     position: [-9, 0.5, 3],
     radius: 1.4,
     glowColor: "#22c55e",
@@ -215,8 +215,8 @@ const WORLDS: WorldDef[] = [
   },
   {
     id: "psychedelics",
-    label: "サイケデリクス",
-    sublabel: "サイケデリクス規制",
+    label: "Psychedelics",
+    sublabel: "Psychedelic Regulations",
     position: [7, 2.8, -5],
     radius: 1.3,
     glowColor: "#a855f7",
@@ -225,8 +225,8 @@ const WORLDS: WorldDef[] = [
   },
   {
     id: "others",
-    label: "その他の物質",
-    sublabel: "その他の規制物質",
+    label: "Others",
+    sublabel: "Other Regulated Substances",
     position: [8, -2.2, 2],
     radius: 1.15,
     glowColor: "#22d3ee",
@@ -923,59 +923,49 @@ function PlanetNode({
         bobPhase={world.bobPhase}
       />
 
-      <Html
-        position={[0, -world.radius - 0.9, 0]}
-        center
-        style={{ pointerEvents: "none", whiteSpace: "nowrap" }}
-      >
-        <div style={{ textAlign: "center" }}>
-          <div
-            style={{
-              color: hovered
-                ? "rgba(255,255,255,0.97)"
-                : "rgba(232,236,241,0.85)",
-              fontSize: "14px",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              fontFamily: "system-ui, -apple-system, sans-serif",
-              textShadow: hovered
-                ? `0 0 20px ${world.glowColor}60, 0 0 40px ${world.glowColor}25, 0 2px 8px rgba(0,0,0,0.8)`
-                : "0 0 12px rgba(0,0,0,0.8), 0 2px 6px rgba(0,0,0,0.6)",
-              transition: "all 0.3s ease",
-            }}
-          >
-            {world.label}
-          </div>
-          <div
-            style={{
-              color: hovered ? "rgba(232,236,241,0.5)" : "rgba(232,236,241,0.3)",
-              fontSize: "10px",
-              fontFamily: "ui-monospace, monospace",
-              letterSpacing: "0.08em",
-              textShadow: "0 0 8px rgba(0,0,0,0.8)",
-              transition: "color 0.3s ease",
-            }}
-          >
-            {world.sublabel}
-          </div>
+      {/* 3D Text Labels - respects depth */}
+      <Billboard position={[0, -world.radius - 0.9, 0]} follow={true}>
+        <Text
+          fontSize={0.35}
+          color={hovered ? "#ffffff" : "#e8ecf1"}
+          anchorX="center"
+          anchorY="top"
+                    outlineWidth={0.02}
+          outlineColor="#000000"
+        >
+          {world.label}
+        </Text>
+        <Text
+          position={[0, -0.4, 0]}
+          fontSize={0.18}
+          color={hovered ? "rgba(232,236,241,0.6)" : "rgba(232,236,241,0.35)"}
+          anchorX="center"
+          anchorY="top"
+                    outlineWidth={0.01}
+          outlineColor="#000000"
+        >
+          {world.sublabel}
+        </Text>
+      </Billboard>
 
-          {/* Hover preview card — real data */}
+      {/* Hover preview card - kept as Html for complex layout */}
+      {hovered && (
+        <Html
+          position={[0, -world.radius - 1.8, 0]}
+          center
+          style={{ pointerEvents: "none", whiteSpace: "nowrap" }}
+        >
           {(() => {
             const stats = getPlanetStats(world.id);
             return (
               <div
                 style={{
-                  marginTop: "8px",
                   padding: "8px 12px",
                   borderRadius: "8px",
                   backgroundColor: "rgba(6,9,15,0.9)",
                   border: `1px solid ${world.glowColor}30`,
                   boxShadow: `0 4px 20px rgba(0,0,0,0.6), 0 0 15px ${world.glowColor}15`,
                   backdropFilter: "blur(8px)",
-                  opacity: hovered ? 1 : 0,
-                  transform: hovered ? "translateY(0) scale(1)" : "translateY(-4px) scale(0.95)",
-                  transition: "all 0.3s ease",
-                  pointerEvents: "none",
                   minWidth: "130px",
                 }}
               >
@@ -992,7 +982,7 @@ function PlanetNode({
                     fontSize: "9px", fontFamily: "ui-monospace, monospace",
                     color: world.glowColor, letterSpacing: "0.05em",
                   }}>
-                    {stats.total} 物質
+                    {stats.total} compounds
                   </span>
                 </div>
                 {/* Status breakdown dots */}
@@ -1029,13 +1019,13 @@ function PlanetNode({
                   fontSize: "7px", fontFamily: "ui-monospace, monospace",
                   color: "rgba(255,255,255,0.25)", letterSpacing: "0.05em",
                 }}>
-                  クリックで詳細
+                  Click for details
                 </div>
               </div>
             );
           })()}
-        </div>
-      </Html>
+        </Html>
+      )}
     </group>
   );
 }
@@ -2060,29 +2050,30 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
         ))}
       </group>
 
-      {/* Label */}
-      <Html position={[0, -1.8, 0]} center style={{ pointerEvents: "none", whiteSpace: "nowrap" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{
-            color: hovered ? "rgba(255,255,255,0.95)" : "rgba(232,236,241,0.8)",
-            fontSize: "14px",
-            fontWeight: 600,
-            fontFamily: "system-ui, -apple-system, sans-serif",
-            textShadow: "0 0 12px rgba(0,0,0,0.8)",
-            transition: "color 0.2s",
-          }}>
-            コミュニティ
-          </div>
-          <div style={{
-            color: "rgba(232,236,241,0.35)",
-            fontSize: "10px",
-            fontFamily: "ui-monospace, monospace",
-            textShadow: "0 0 8px rgba(0,0,0,0.8)",
-          }}>
-            ブログ & 交流
-          </div>
-        </div>
-      </Html>
+      {/* 3D Text Labels - respects depth */}
+      <Billboard position={[0, -1.8, 0]} follow={true}>
+        <Text
+          fontSize={0.35}
+          color={hovered ? "#ffffff" : "#e8ecf1"}
+          anchorX="center"
+          anchorY="top"
+                    outlineWidth={0.02}
+          outlineColor="#000000"
+        >
+          Community
+        </Text>
+        <Text
+          position={[0, -0.4, 0]}
+          fontSize={0.18}
+          color="rgba(232,236,241,0.4)"
+          anchorX="center"
+          anchorY="top"
+                    outlineWidth={0.01}
+          outlineColor="#000000"
+        >
+          Blog & Connect
+        </Text>
+      </Billboard>
     </group>
   );
 }
@@ -2509,36 +2500,30 @@ function CentralHub() {
         <PulsingRing key={i} index={i} />
       ))}
 
-      {/* Label */}
-      <Html
-        position={[0, -1.4, 0]}
-        center
-        style={{ pointerEvents: "none", whiteSpace: "nowrap" }}
-      >
-        <div style={{ textAlign: "center" }}>
-          <div
-            style={{
-              color: "rgba(255,240,200,0.9)",
-              fontSize: "16px",
-              fontWeight: "bold",
-              fontFamily: "system-ui, -apple-system, sans-serif",
-              textShadow: "0 0 20px rgba(255,200,50,0.5), 0 0 40px rgba(255,180,30,0.2)",
-            }}
-          >
-            JBN
-          </div>
-          <div
-            style={{
-              color: "rgba(255,240,200,0.4)",
-              fontSize: "9px",
-              fontFamily: "ui-monospace, monospace",
-              textShadow: "0 0 8px rgba(255,200,50,0.2)",
-            }}
-          >
-            セントラルハブ
-          </div>
-        </div>
-      </Html>
+      {/* 3D Text Labels - respects depth */}
+      <Billboard position={[0, -1.4, 0]} follow={true}>
+        <Text
+          fontSize={0.4}
+          color="#fff0c8"
+          anchorX="center"
+          anchorY="top"
+                    outlineWidth={0.02}
+          outlineColor="#000000"
+        >
+          JBN
+        </Text>
+        <Text
+          position={[0, -0.45, 0]}
+          fontSize={0.16}
+          color="rgba(255,240,200,0.5)"
+          anchorX="center"
+          anchorY="top"
+                    outlineWidth={0.01}
+          outlineColor="#000000"
+        >
+          Central Hub
+        </Text>
+      </Billboard>
     </group>
   );
 }
@@ -2868,15 +2853,19 @@ function CameraController({
   onArrive: () => void;
 }) {
   const { camera } = useThree();
+  const phase = useRef<"toOrigin" | "alongPath">("toOrigin"); // Two-phase animation
   const progress = useRef(0);
   const arrived = useRef(false);
+  const initialPos = useRef<THREE.Vector3 | null>(null); // Camera starting position
   const travelCurve = useRef<THREE.QuadraticBezierCurve3 | null>(null);
   const destPos = useRef<THREE.Vector3 | null>(null);
 
   useFrame(() => {
     if (!travelTarget) {
+      phase.current = "toOrigin";
       progress.current = 0;
       arrived.current = false;
+      initialPos.current = null;
       travelCurve.current = null;
       destPos.current = null;
       return;
@@ -2889,11 +2878,16 @@ function CameraController({
       : WORLDS.find((w) => w.id === travelTarget)?.position;
     if (!worldPos) return;
 
-    // Create the curved path ON the golden path (from ORIGIN to target)
+    // Store initial camera position and destination on first frame
+    if (!initialPos.current) {
+      initialPos.current = camera.position.clone();
+      destPos.current = new THREE.Vector3(...worldPos);
+    }
+
+    // Create the golden path curve (from ORIGIN to target)
     if (!travelCurve.current) {
       const start = new THREE.Vector3(...ORIGIN);
       const end = new THREE.Vector3(...worldPos);
-      destPos.current = end.clone();
 
       // Same curve formula as GoldenPath
       const mid = new THREE.Vector3().lerpVectors(start, end, 0.5);
@@ -2902,46 +2896,80 @@ function CameraController({
       travelCurve.current = new THREE.QuadraticBezierCurve3(start, mid, end);
     }
 
-    // Slower three-phase speed
+    // Speed calculation (same for both phases) — ~1.5s total
     const p = progress.current;
     let speed: number;
     if (p < 0.2) {
-      speed = 0.002 + easeOutCubic(p / 0.2) * 0.005;
+      speed = 0.008 + easeOutCubic(p / 0.2) * 0.012;
     } else if (p < 0.8) {
-      speed = 0.007;
+      speed = 0.02;
     } else {
-      speed = 0.007 * (1 - easeOutCubic((p - 0.8) / 0.2) * 0.9);
+      speed = 0.02 * (1 - easeOutCubic((p - 0.8) / 0.2) * 0.7);
     }
     progress.current = Math.min(progress.current + speed, 1);
 
     const ease = easeInOutCubic(progress.current);
-
-    // Stop at 55% of the path so the planet is visible in front
-    const stopPoint = 0.55;
-    const pathProgress = ease * stopPoint;
-
-    // Position camera slightly above the golden path
-    const pathPos = travelCurve.current.getPoint(pathProgress);
-    camera.position.set(pathPos.x, pathPos.y + 1.0, pathPos.z);
-
-    // Look at the destination (planet/book)
-    camera.lookAt(destPos.current!);
-
-    // FOV zoom effect
     const fovBase = 45;
-    let fovOffset = 0;
-    if (p > 0.1 && p < 0.85) {
-      const fp = (p - 0.1) / 0.75;
-      fovOffset = Math.sin(fp * Math.PI) * 10;
-    }
-    (camera as THREE.PerspectiveCamera).fov = fovBase + fovOffset;
-    (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
 
-    if (progress.current >= 1) {
-      arrived.current = true;
-      (camera as THREE.PerspectiveCamera).fov = fovBase;
+    if (phase.current === "toOrigin") {
+      // Phase 1: Travel from current position to ORIGIN (start of golden path)
+      const originVec = new THREE.Vector3(...ORIGIN);
+
+      // Curved path from initial position to origin
+      const mid = new THREE.Vector3().lerpVectors(initialPos.current!, originVec, 0.5);
+      mid.y += 2.0; // Arc up above the scene
+
+      const curveToOrigin = new THREE.QuadraticBezierCurve3(
+        initialPos.current!,
+        mid,
+        originVec
+      );
+
+      const pos = curveToOrigin.getPoint(ease);
+      camera.position.set(pos.x, pos.y + 0.5, pos.z);
+
+      // Look towards the origin, then gradually towards destination
+      const lookTarget = new THREE.Vector3().lerpVectors(originVec, destPos.current!, ease * 0.3);
+      camera.lookAt(lookTarget);
+
+      // Subtle FOV change during approach
+      const fovOffset = Math.sin(ease * Math.PI) * 5;
+      (camera as THREE.PerspectiveCamera).fov = fovBase + fovOffset;
       (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
-      onArrive();
+
+      // Transition to phase 2 when we reach origin
+      if (progress.current >= 1) {
+        phase.current = "alongPath";
+        progress.current = 0;
+      }
+    } else {
+      // Phase 2: Travel along the golden path to target
+      // Stop at 55% of the path so the planet is visible in front
+      const stopPoint = 0.55;
+      const pathProgress = ease * stopPoint;
+
+      // Position camera slightly above the golden path
+      const pathPos = travelCurve.current!.getPoint(pathProgress);
+      camera.position.set(pathPos.x, pathPos.y + 1.0, pathPos.z);
+
+      // Look at the destination (planet/book)
+      camera.lookAt(destPos.current!);
+
+      // FOV zoom effect
+      let fovOffset = 0;
+      if (p > 0.1 && p < 0.85) {
+        const fp = (p - 0.1) / 0.75;
+        fovOffset = Math.sin(fp * Math.PI) * 10;
+      }
+      (camera as THREE.PerspectiveCamera).fov = fovBase + fovOffset;
+      (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+
+      if (progress.current >= 1) {
+        arrived.current = true;
+        (camera as THREE.PerspectiveCamera).fov = fovBase;
+        (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+        onArrive();
+      }
     }
   });
 

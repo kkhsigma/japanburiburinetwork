@@ -1,16 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { Search, X, Sun, Moon } from "lucide-react";
 
 const navItems = [
-  { label: "モニター", href: "/universe", active: true },
-  { label: "アラート", href: "/alerts" },
-  { label: "ウォッチリスト", href: "/watchlist" },
-  { label: "物質DB", href: "/explore" },
-  { label: "タイムライン", href: "#timeline" },
-  { label: "ソース", href: "#sources" },
+  { label: "Monitor", href: "/universe", active: true },
+  { label: "Cannabis", href: "/cannabis" },
+  { label: "Psychedelics", href: "/psychedelics" },
+  { label: "Others", href: "/explore" },
+  { label: "Alerts", href: "/alerts" },
+  { label: "Watchlist", href: "/watchlist" },
+  { label: "Blog", href: "/blog" },
 ];
 
 interface NavBarProps {
@@ -46,10 +48,11 @@ export function NavBar({ theme, onToggleTheme }: NavBarProps) {
 
       <div className="flex items-center justify-between px-5 sm:px-8 h-12">
         {/* Left: Glowing JBN logo */}
-        <a href="/" className="flex items-center gap-1.5 group">
+        <Link href="/" className="flex items-center gap-2 group">
           <span
-            className="text-[18px] font-black font-mono tracking-[-0.05em] transition-all duration-500"
+            className="text-[20px] font-bold tracking-[-0.02em] transition-all duration-500"
             style={{
+              fontFamily: "var(--font-space-grotesk), sans-serif",
               color: isDark ? "#1a9a8a" : "#111",
               textShadow: isDark
                 ? "0 0 10px rgba(26,154,138,0.6), 0 0 30px rgba(26,154,138,0.3), 0 0 60px rgba(26,154,138,0.15)"
@@ -59,28 +62,31 @@ export function NavBar({ theme, onToggleTheme }: NavBarProps) {
             JBN
           </span>
           <span
-            className="text-[9px] font-mono tracking-widest uppercase transition-colors duration-500 hidden sm:block"
+            className="text-[10px] tracking-[0.15em] uppercase transition-colors duration-500 hidden sm:block"
             style={{
-              color: isDark ? "rgba(26,154,138,0.4)" : "rgba(0,0,0,0.25)",
+              fontFamily: "var(--font-space-grotesk), sans-serif",
+              color: isDark ? "rgba(26,154,138,0.5)" : "rgba(0,0,0,0.3)",
+              fontWeight: 500,
             }}
           >
-            monitor
+            Monitor
           </span>
-        </a>
+        </Link>
 
         {/* Center: Nav items */}
-        <nav className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
+        <nav className="hidden md:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2">
           {navItems.map((item) => (
-            <a
+            <Link
               key={item.label}
               href={item.href}
-              className="relative px-3.5 py-1.5 rounded-md text-[12px] transition-all duration-300 group"
+              className="relative px-3 py-1.5 rounded-md text-[13px] transition-all duration-300 group"
               style={{
+                fontFamily: "var(--font-space-grotesk), sans-serif",
                 color: item.active
                   ? isDark ? "#e2e8f0" : "#1a1d23"
-                  : isDark ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.35)",
-                fontWeight: item.active ? 600 : 400,
-                letterSpacing: "0.03em",
+                  : isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.4)",
+                fontWeight: item.active ? 600 : 500,
+                letterSpacing: "0.01em",
               }}
             >
               {/* Active indicator — glowing dot + underline */}
@@ -103,15 +109,17 @@ export function NavBar({ theme, onToggleTheme }: NavBarProps) {
                   />
                 </>
               )}
-              {/* Hover bg */}
+              {/* Hover underline animation */}
               <span
-                className="absolute inset-0 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                className="absolute bottom-0.5 left-3 right-3 h-[1.5px] origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-300 ease-out"
                 style={{
-                  backgroundColor: isDark ? "rgba(26,154,138,0.06)" : "rgba(0,0,0,0.03)",
+                  background: isDark
+                    ? "linear-gradient(90deg, rgba(26,154,138,0.8), rgba(56,189,248,0.6))"
+                    : "linear-gradient(90deg, rgba(26,154,138,0.6), rgba(0,0,0,0.3))",
                 }}
               />
               <span className="relative">{item.label}</span>
-            </a>
+            </Link>
           ))}
         </nav>
 
@@ -134,9 +142,12 @@ export function NavBar({ theme, onToggleTheme }: NavBarProps) {
                 <input
                   autoFocus
                   type="text"
-                  placeholder="物質名で検索..."
+                  placeholder="Search compounds..."
                   className="bg-transparent text-[12px] placeholder-gray-500 outline-none w-full"
-                  style={{ color: isDark ? "#e2e8f0" : "#1a1d23" }}
+                  style={{
+                    fontFamily: "var(--font-space-grotesk), sans-serif",
+                    color: isDark ? "#e2e8f0" : "#1a1d23"
+                  }}
                   onBlur={() => setSearchOpen(false)}
                 />
                 <button onClick={() => setSearchOpen(false)}>
@@ -183,10 +194,14 @@ export function NavBar({ theme, onToggleTheme }: NavBarProps) {
               <div className="absolute inset-0 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping opacity-25" />
             </div>
             <span
-              className="text-[10px] font-mono tracking-wider transition-colors duration-500"
-              style={{ color: isDark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.3)" }}
+              className="text-[10px] tracking-wider transition-colors duration-500"
+              style={{
+                fontFamily: "var(--font-space-grotesk), sans-serif",
+                color: isDark ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.35)",
+                fontWeight: 500,
+              }}
             >
-              稼働中
+              Live
             </span>
           </div>
         </div>

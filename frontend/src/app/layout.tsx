@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/lib/query-provider";
 import { AskJbnWrapper } from "@/components/chat/AskJbnWrapper";
@@ -13,6 +14,11 @@ const geistMono = localFont({
   src: "./fonts/GeistMonoVF.woff",
   variable: "--font-geist-mono",
   weight: "100 900",
+});
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space-grotesk",
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -29,14 +35,14 @@ export default function RootLayout({
   return (
     <html lang="ja" style={{ backgroundColor: "#030303" }}>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#030303] text-[#e2e8f0] min-h-screen`}
+        className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} antialiased bg-[#030303] text-[#e2e8f0] min-h-screen`}
         style={{ backgroundColor: "#030303" }}
       >
         <QueryProvider>
           {children}
         </QueryProvider>
         <AskJbnWrapper />
-        <div className="fixed top-4 left-4 z-50 pointer-events-none">
+        <div className="fixed bottom-4 right-4 z-50 pointer-events-none">
           <span className="text-[10px] font-mono text-white/30">
             v{process.env.NEXT_PUBLIC_APP_VERSION}
           </span>
