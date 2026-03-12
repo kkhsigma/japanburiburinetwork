@@ -2916,14 +2916,16 @@ function CameraController({
 
     const ease = easeInOutCubic(progress.current);
 
-    // Position camera slightly above the golden path
-    const pathPos = travelCurve.current.getPoint(ease);
-    camera.position.set(pathPos.x, pathPos.y + 0.8, pathPos.z);
+    // Stop at 75% of the path so the planet is visible in front
+    const stopPoint = 0.75;
+    const pathProgress = ease * stopPoint;
 
-    // Look ahead along the path (in the direction of travel toward the target)
-    const lookAhead = Math.min(ease + 0.15, 1);
-    const lookTarget = travelCurve.current.getPoint(lookAhead);
-    camera.lookAt(lookTarget);
+    // Position camera slightly above the golden path
+    const pathPos = travelCurve.current.getPoint(pathProgress);
+    camera.position.set(pathPos.x, pathPos.y + 1.0, pathPos.z);
+
+    // Look at the destination (planet/book)
+    camera.lookAt(destPos.current!);
 
     // FOV zoom effect
     const fovBase = 45;
