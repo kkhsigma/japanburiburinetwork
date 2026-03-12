@@ -8,9 +8,8 @@ import { NavBar } from "@/components/universe/NavBar";
 import { SunRayTransition } from "@/components/universe/SunRayTransition";
 // StarField removed — WebGL Stars inside UniverseCanvas handles star rendering
 import { StatusBar } from "@/components/universe/StatusBar";
-import { LatestAlerts } from "@/components/dashboard/LatestAlerts";
-import { RegulationTimeline } from "@/components/dashboard/RegulationTimeline";
-import { MonitoredSources } from "@/components/dashboard/MonitoredSources";
+import { IntelligenceBrief } from "@/components/dashboard/IntelligenceBrief";
+import { CategoryCards } from "@/components/dashboard/CategoryCards";
 
 export default function UniversePage() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -161,32 +160,14 @@ export default function UniversePage() {
       {/* Live status bar — bridge between canvas and dashboard */}
       <StatusBar />
 
-      {/* Dashboard content */}
-      <div className="relative z-10 space-y-8 pt-6 pb-16">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.5 }}
-        >
-          <LatestAlerts />
-        </motion.div>
+      {/* Intelligence Brief Section */}
+      <div className="relative z-10">
+        <IntelligenceBrief theme={theme} />
+      </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-        >
-          <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-0 lg:gap-6 px-4">
-            <div className="lg:col-span-2">
-              <RegulationTimeline />
-            </div>
-            <div className="lg:col-span-3">
-              <MonitoredSources />
-            </div>
-          </div>
-        </motion.div>
+      {/* Category Cards Section */}
+      <div className="relative z-10 pb-16">
+        <CategoryCards theme={theme} />
       </div>
     </div>
   );

@@ -1670,8 +1670,9 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
     varying float vAlpha;
     void main() {
       float glow = vAlpha * vAlpha; // Exponential glow at head
-      vec3 brightColor = uColor * (1.5 + glow * 2.5); // Much brighter
-      gl_FragColor = vec4(brightColor, vAlpha * uOpacity);
+      vec3 brightColor = uColor * (3.0 + glow * 5.0); // Ultra bright
+      float alpha = vAlpha * uOpacity * 2.0; // Double opacity
+      gl_FragColor = vec4(brightColor, alpha);
     }
   `;
 
@@ -1692,7 +1693,7 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
 
   const rayUniforms = useMemo(() => {
     return Array.from({ length: rayCount }, () => ({
-      uColor: { value: new THREE.Color(1.2, 0.95, 0.6) }, // bright warm golden
+      uColor: { value: new THREE.Color(1.5, 1.4, 1.0) }, // white golden
       uOpacity: { value: 0 },
     }));
   }, []);
@@ -1852,14 +1853,15 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
           ray.progress = 0;
           ray.speed = 0.5 + Math.random() * 0.4;
           ray.length = 0.5 + Math.random() * 0.4;
-          // Start from random position around the book
-          const angle = Math.random() * Math.PI * 2;
+          // Start from random position in FRONT of the book only (toward camera)
+          // Angle range: -PI/2 to PI/2 (front 180 degrees, positive Z side)
+          const angle = (Math.random() - 0.5) * Math.PI;
           const dist = 4.0 + Math.random() * 2.5;
           const yOff = (Math.random() - 0.5) * 2.5;
           ray.startPos.set(
             Math.cos(angle) * dist,
             yOff,
-            Math.sin(angle) * dist
+            Math.abs(Math.sin(angle) * dist) // Force positive Z (front of book)
           );
         }
 
@@ -1897,10 +1899,10 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
             }
             rayGeos[i].attributes.position.needsUpdate = true;
 
-            // Brighter glow, fade in/out
-            const fadeIn = Math.min(1, ray.progress * 5);
-            const fadeOut = 1 - Math.pow(ray.progress, 2.5);
-            rayUniforms[i].uOpacity.value = fadeIn * fadeOut * openAmount.current * 1.2;
+            // Ultra bright glow, fade in/out
+            const fadeIn = Math.min(1, ray.progress * 4);
+            const fadeOut = 1 - Math.pow(ray.progress, 3.0);
+            rayUniforms[i].uOpacity.value = fadeIn * fadeOut * openAmount.current * 2.5;
           }
         }
       }
@@ -2020,16 +2022,6 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
           </mesh>
         </group>
       </group>
-
-      {/* Wormhole portal - on the front page of the book */}
-      <mesh
-        ref={wormholeRef}
-        position={[0.15, 0, bookD / 2 + 0.05]}
-        rotation={[0, 0, 0]}
-      >
-        <planeGeometry args={[bookW * 0.85, bookH * 0.88]} />
-        <primitive object={wormholeMaterial} attach="material" />
-      </mesh>
 
       {/* Orbiting 3D glowing puzzle pieces - 4 different shapes */}
       {puzzleGeos.map((geo, idx) => (
@@ -2771,7 +2763,6 @@ const GALAXY_VERT = /* glsl */ `
 
 const GALAXY_FRAG = /* glsl */ `
   uniform float uTime;
-  uniform vec2 uMouse;
   varying vec2 vUv;
 
   #define PI 3.14159265359
@@ -3073,9 +3064,6 @@ const GALAXY_FRAG = /* glsl */ `
   void main() {
     vec2 uv = vUv - 0.5;
 
-    // Mouse parallax
-    uv += (uMouse - 0.5) * 0.012;
-
     // Galaxy tilt (~75 degrees) - steep angle to see side profile
     float tiltAngle = 1.3;
     vec2 tiltedUV = vec2(uv.x, uv.y / cos(tiltAngle));
@@ -3308,14 +3296,12 @@ const GALAXY_FRAG = /* glsl */ `
 
 function Galaxy3D() {
   const meshRef = useRef<THREE.Mesh>(null);
-  const mouseRef = useRef({ x: 0.5, y: 0.5 });
 
   const uniforms = useMemo(() => ({
     uTime: { value: 0 },
-    uMouse: { value: new THREE.Vector2(0.5, 0.5) },
   }), []);
 
-  useFrame(({ clock, mouse }) => {
+  useFrame(({ clock }) => {
     if (meshRef.current) {
       const t = clock.getElapsedTime();
       const mat = meshRef.current.material as THREE.ShaderMaterial;
@@ -3323,11 +3309,6 @@ function Galaxy3D() {
 
       // Very slow galaxy rotation (one full rotation every ~10 minutes)
       meshRef.current.rotation.z = 0.2 + t * 0.01;
-
-      // Smooth mouse movement
-      mouseRef.current.x += ((mouse.x + 1) / 2 - mouseRef.current.x) * 0.02;
-      mouseRef.current.y += ((mouse.y + 1) / 2 - mouseRef.current.y) * 0.02;
-      mat.uniforms.uMouse.value.set(mouseRef.current.x, mouseRef.current.y);
     }
   });
 
@@ -4737,27 +4718,62 @@ interface MomentumOrbitControlsProps {
 }
 
 function MomentumOrbitControls({ enabled, travelTarget }: MomentumOrbitControlsProps) {
+  const { camera } = useThree();
   const controlsRef = useRef<any>(null);
   const isDragging = useRef(false);
-  const lastX = useRef(0);
+  const lastPos = useRef({ x: 0, y: 0 });
   const lastTime = useRef(0);
-  const velocityX = useRef(0);
-  const rotateSpeed = useRef(0.12); // Default auto-rotate speed
-  const baseSpeed = 0.12; // Minimum rotation speed
-  const maxSpeed = 0.8; // Maximum rotation speed
+  const velocity = useRef({ x: 0.0003, y: 0 }); // Angular velocity - starts with gentle auto-spin
+  const friction = 0.98; // Momentum decay per frame
+  const sensitivity = 0.0003; // How much swipe affects rotation speed
+  const minPolar = Math.PI * 0.12;
+  const maxPolar = Math.PI * 0.82;
+  const defaultSpin = 0.0003; // Default gentle auto-rotation speed
+  const minSpeed = 0.0002; // Below this, snap back to default spin
 
   useFrame(() => {
-    if (controlsRef.current && !travelTarget) {
-      controlsRef.current.autoRotateSpeed = rotateSpeed.current;
+    if (!controlsRef.current || travelTarget || isDragging.current) return;
+
+    // Get current spherical coordinates
+    const spherical = new THREE.Spherical();
+    spherical.setFromVector3(camera.position);
+
+    // Check if momentum has died down
+    const speed = Math.sqrt(velocity.current.x ** 2 + velocity.current.y ** 2);
+
+    if (speed < minSpeed) {
+      // Momentum died down - restore gentle auto-spin
+      velocity.current.x = defaultSpin;
+      velocity.current.y = 0;
     }
+
+    // Apply angular velocity
+    spherical.theta += velocity.current.x;
+    spherical.phi += velocity.current.y;
+
+    // Clamp polar angle to stay within bounds
+    spherical.phi = Math.max(minPolar, Math.min(maxPolar, spherical.phi));
+
+    // Update camera position
+    camera.position.setFromSpherical(spherical);
+    camera.lookAt(0, 0, 0);
+
+    // Apply friction to slow down (only for velocities above default)
+    if (speed > defaultSpin * 1.5) {
+      velocity.current.x *= friction;
+      velocity.current.y *= friction;
+    }
+
+    // Update controls to sync with new camera position
+    controlsRef.current.update();
   });
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
       isDragging.current = true;
-      lastX.current = e.clientX;
+      lastPos.current = { x: e.clientX, y: e.clientY };
       lastTime.current = performance.now();
-      velocityX.current = 0;
+      // Don't reset velocity - let user "catch" the spinning camera
     };
 
     const onPointerMove = (e: PointerEvent) => {
@@ -4767,31 +4783,21 @@ function MomentumOrbitControls({ enabled, travelTarget }: MomentumOrbitControlsP
       const dt = now - lastTime.current;
 
       if (dt > 0) {
-        const dx = e.clientX - lastX.current;
-        // Smooth velocity tracking
-        velocityX.current = velocityX.current * 0.7 + (dx / dt) * 0.3;
+        const dx = e.clientX - lastPos.current.x;
+        const dy = e.clientY - lastPos.current.y;
+        // Track velocity in both directions with smoothing
+        velocity.current.x = velocity.current.x * 0.5 + (dx / dt) * sensitivity * 0.5;
+        velocity.current.y = velocity.current.y * 0.5 + (dy / dt) * sensitivity * 0.5;
       }
 
-      lastX.current = e.clientX;
+      lastPos.current = { x: e.clientX, y: e.clientY };
       lastTime.current = now;
     };
 
     const onPointerUp = () => {
       if (!isDragging.current) return;
       isDragging.current = false;
-
-      // Apply momentum based on swipe velocity
-      // Negative velocity = swiped left = rotate right (positive speed)
-      // Positive velocity = swiped right = rotate left (negative speed)
-      const swipeDirection = -Math.sign(velocityX.current);
-      const swipeMagnitude = Math.abs(velocityX.current);
-
-      if (swipeMagnitude > 0.05) {
-        // User swiped with enough velocity
-        const newSpeed = baseSpeed + Math.min(swipeMagnitude * 0.5, maxSpeed - baseSpeed);
-        rotateSpeed.current = swipeDirection * newSpeed;
-      }
-      // If swipe was too slow, keep current rotation direction
+      // Momentum continues from current velocity - no changes needed
     };
 
     window.addEventListener("pointerdown", onPointerDown);
@@ -4815,10 +4821,9 @@ function MomentumOrbitControls({ enabled, travelTarget }: MomentumOrbitControlsP
       enableDamping
       dampingFactor={0.05}
       enableZoom={false}
-      maxPolarAngle={Math.PI * 0.82}
-      minPolarAngle={Math.PI * 0.12}
-      autoRotate={!travelTarget}
-      autoRotateSpeed={rotateSpeed.current}
+      maxPolarAngle={maxPolar}
+      minPolarAngle={minPolar}
+      autoRotate={false}
       enablePan={false}
     />
   );
@@ -5003,8 +5008,6 @@ function CameraReset() {
 
 function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"; skipIntro?: boolean }) {
   const [travelTarget, setTravelTarget] = useState<string | null>(null);
-  const isLight = theme === "light";
-
   const handleSelect = (id: string) => {
     if (!travelTarget) setTravelTarget(id);
   };
@@ -5028,59 +5031,52 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
       {/* Responsive FOV — widen on narrow screens so planets fit */}
       <ResponsiveFov baseFov={45} />
 
-      {/* Dynamic background */}
-      <color attach="background" args={[isLight ? "#1a1a1a" : "#020202"]} />
-      <fog attach="fog" args={[isLight ? "#1a1a1a" : "#020202", isLight ? 50 : 40, 120]} />
+      {/* Background - always dark mode appearance */}
+      <color attach="background" args={["#020202"]} />
+      <fog attach="fog" args={["#020202", 40, 120]} />
 
-      {/* Lighting — cinematic three-point setup */}
-      <ambientLight intensity={isLight ? 0.5 : 0.12} color={isLight ? "#aabbdd" : "#8899bb"} />
+      {/* Lighting — cinematic three-point setup (dark mode) */}
+      <ambientLight intensity={0.12} color="#8899bb" />
       {/* Key light — warm, strong, from upper-left */}
       <directionalLight
         position={[-10, 8, 10]}
-        intensity={isLight ? 2.4 : 2.0}
+        intensity={2.0}
         color="#fff4e0"
       />
       {/* Fill light — cool, softer, from opposite side */}
       <directionalLight
         position={[8, -2, -8]}
-        intensity={isLight ? 0.5 : 0.3}
-        color={isLight ? "#8899cc" : "#4466aa"}
+        intensity={0.3}
+        color="#4466aa"
       />
       {/* Rim/backlight — edge definition, from behind */}
       <directionalLight
         position={[0, 4, -14]}
-        intensity={isLight ? 0.8 : 0.6}
-        color={isLight ? "#aaccff" : "#3355aa"}
+        intensity={0.6}
+        color="#3355aa"
       />
-      {isLight && (
-        <directionalLight
-          position={[0, 10, -5]}
-          intensity={0.6}
-          color="#ccbbff"
-        />
-      )}
       {/* Point light at origin (sun) for local illumination */}
-      <pointLight position={[0, 0, 0]} intensity={isLight ? 1.5 : 2.0} color="#ffc830" distance={25} decay={2} />
+      <pointLight position={[0, 0, 0]} intensity={2.0} color="#ffc830" distance={25} decay={2} />
 
-      {/* Starfield - reduced in dark mode to let black hole background show */}
+      {/* Starfield */}
       <Stars
         radius={120}
         depth={70}
-        count={isLight ? 1000 : 800}
-        factor={isLight ? 3 : 2}
-        saturation={isLight ? 0.3 : 0}
+        count={800}
+        factor={2}
+        saturation={0}
         fade
-        speed={isLight ? 0.6 : 0.3}
+        speed={0.3}
       />
 
       {/* Cinematic spiral galaxy in distant background */}
-      {!isLight && <Galaxy3D />}
+      <Galaxy3D />
 
       {/* Milky Way nebula bands - scattered cosmic clouds */}
-      {!isLight && <MilkyWayBands />}
+      <MilkyWayBands />
 
       {/* Distant mini galaxies - reddish scattered around universe */}
-      {!isLight && <DistantGalaxies />}
+      <DistantGalaxies />
 
       {/* Ambient nebula clouds */}
       <Nebula />
@@ -5196,7 +5192,7 @@ export function UniverseCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100vh", background: theme === "light" ? "#1a1a1a" : "#020202", transition: "background 0.7s ease" }}>
+    <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100vh", background: "#020202" }}>
       <Canvas
         camera={{ position: [0, 12, 22], fov: 45 }}
         gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
