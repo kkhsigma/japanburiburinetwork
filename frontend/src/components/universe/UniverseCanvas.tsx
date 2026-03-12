@@ -3351,6 +3351,265 @@ function Galaxy3D() {
   );
 }
 
+// ─── MINI GALAXY SHADER ─────────────────────────────────
+// Smaller distant galaxies with customizable color tint
+
+const MINI_GALAXY_VERT = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const MINI_GALAXY_FRAG = /* glsl */ `
+  uniform float uTime;
+  uniform vec3 uColorTint;
+  uniform float uSeed;
+  varying vec2 vUv;
+
+  #define PI 3.14159265359
+  #define TAU 6.28318530718
+
+  float hash(float n) { return fract(sin(n + uSeed) * 43758.5453123); }
+  float hash2(vec2 p) { return fract(sin(dot(p + uSeed, vec2(127.1, 311.7))) * 43758.5453); }
+
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    float a = hash2(i);
+    float b = hash2(i + vec2(1.0, 0.0));
+    float c = hash2(i + vec2(0.0, 1.0));
+    float d = hash2(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
+
+  float fbm(vec2 p, int octaves) {
+    float v = 0.0, a = 0.5;
+    mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+    for (int i = 0; i < 8; i++) {
+      if (i >= octaves) break;
+      v += a * noise(p);
+      p = rot * p * 2.1 + 100.0;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  // Sharp star field
+  vec3 starField(vec2 uv, float density, float threshold) {
+    vec2 gv = fract(uv * density) - 0.5;
+    vec2 id = floor(uv * density);
+    vec3 col = vec3(0.0);
+
+    for (float y = -1.0; y <= 1.0; y++) {
+      for (float x = -1.0; x <= 1.0; x++) {
+        vec2 offset = vec2(x, y);
+        vec2 cellId = id + offset;
+        float rand = hash2(cellId);
+        if (rand > threshold) {
+          vec2 starPos = offset + hash2(cellId + 100.0) - 0.5;
+          float d = length(gv - starPos);
+          float brightness = (rand - threshold) / (1.0 - threshold);
+          float star = exp(-d * d * 150.0) * brightness;
+          col += vec3(star) * uColorTint;
+        }
+      }
+    }
+    return col;
+  }
+
+  // Spiral arm function
+  float spiralArm(vec2 uv, float armCount, float tightness, float phase, float width) {
+    float dist = length(uv);
+    float angle = atan(uv.y, uv.x);
+    float spiral = angle + log(dist + 0.001) * tightness - phase;
+    spiral = mod(spiral, TAU / armCount);
+    spiral = min(spiral, TAU / armCount - spiral);
+    float edgeNoise = noise(vec2(dist * 15.0, angle * 4.0)) * 0.12;
+    spiral += edgeNoise * (0.5 - dist);
+    float arm = smoothstep(width + edgeNoise * 0.4, 0.0, spiral);
+    arm *= smoothstep(0.0, 0.05, dist);
+    arm *= smoothstep(0.5, 0.15, dist);
+    return arm;
+  }
+
+  void main() {
+    vec2 uv = vUv - 0.5;
+    float dist = length(uv);
+    float time = uTime * 0.02 + uSeed * 10.0;
+
+    // Rotation
+    float rotAngle = uTime * 0.04 + uSeed * 5.0;
+    mat2 rotMat = mat2(cos(rotAngle), -sin(rotAngle), sin(rotAngle), cos(rotAngle));
+    vec2 rotUV = rotMat * uv;
+
+    // Tilt for 3D look
+    vec2 tiltedUV = vec2(rotUV.x, rotUV.y * 2.5);
+    float tiltDist = length(tiltedUV);
+
+    vec3 color = vec3(0.0);
+    float totalAlpha = 0.0;
+
+    // Background stars
+    color += starField(uv * 0.8, 40.0, 0.88) * 0.5;
+    color += starField(uv * 1.2, 70.0, 0.91) * 0.4;
+
+    // Galactic core - bright concentrated center
+    float coreSize = 0.04;
+    float innerCore = exp(-tiltDist * tiltDist / (coreSize * coreSize * 0.4)) * 1.8;
+    float outerCore = exp(-tiltDist * tiltDist / (coreSize * coreSize * 4.0)) * 0.4;
+
+    // Core grain texture
+    float coreGrain = fbm(tiltedUV * 80.0 + time, 5);
+    innerCore *= 0.75 + coreGrain * 0.35;
+
+    // Core color - brighter center
+    vec3 coreCol = uColorTint * 1.2;
+    coreCol = mix(coreCol, vec3(1.0, 0.98, 0.95), innerCore * 0.3);
+    color += coreCol * (innerCore + outerCore);
+    totalAlpha += innerCore * 0.9 + outerCore * 0.4;
+
+    // Spiral arms
+    float arm1 = spiralArm(tiltedUV, 2.0, 2.8, time, 0.35);
+    float arm2 = spiralArm(tiltedUV, 2.0, 2.8, time + PI, 0.35);
+    float arm3 = spiralArm(tiltedUV, 2.0, 3.2, time + PI * 0.5, 0.22) * 0.5;
+    float arm4 = spiralArm(tiltedUV, 2.0, 3.2, time + PI * 1.5, 0.22) * 0.5;
+
+    float totalArms = arm1 + arm2 + arm3 + arm4;
+
+    // Arm texture
+    float dustCoarse = fbm(tiltedUV * 5.0 + time * 0.3, 5) * 0.5;
+    float dustFine = fbm(tiltedUV * 25.0 + time * 0.15, 6) * 0.3;
+    float armDensity = totalArms * (0.5 + dustCoarse + dustFine);
+
+    // Arm coloring - gradient from core
+    float temp = 1.0 - tiltDist * 2.0;
+    temp = clamp(temp, 0.0, 1.0);
+    vec3 armColor = mix(uColorTint * 0.7, uColorTint * 1.1, temp);
+    armColor = mix(armColor, vec3(1.0, 0.95, 0.9), temp * 0.2);
+
+    color += armColor * armDensity;
+    totalAlpha += armDensity * 0.7;
+
+    // Bright star clusters in arms
+    float clusters = pow(fbm(tiltedUV * 18.0 + time * 0.2, 4), 2.5) * totalArms;
+    color += uColorTint * clusters * 1.5;
+    totalAlpha += clusters * 0.5;
+
+    // Fade at edges
+    float edgeFade = 1.0 - smoothstep(0.3, 0.5, dist);
+    color *= edgeFade;
+    totalAlpha *= edgeFade;
+
+    gl_FragColor = vec4(color, totalAlpha * 0.85);
+  }
+`;
+
+interface MiniGalaxyProps {
+  position: [number, number, number];
+  scale: number;
+  rotation?: [number, number, number];
+  colorTint: [number, number, number];
+  seed: number;
+}
+
+function MiniGalaxy({ position, scale, rotation = [0, 0, 0], colorTint, seed }: MiniGalaxyProps) {
+  const meshRef = useRef<THREE.Mesh>(null);
+
+  const uniforms = useMemo(() => ({
+    uTime: { value: 0 },
+    uColorTint: { value: new THREE.Vector3(...colorTint) },
+    uSeed: { value: seed },
+  }), [colorTint, seed]);
+
+  useFrame(({ clock }) => {
+    if (meshRef.current) {
+      const mat = meshRef.current.material as THREE.ShaderMaterial;
+      mat.uniforms.uTime.value = clock.getElapsedTime();
+    }
+  });
+
+  return (
+    <mesh
+      ref={meshRef}
+      position={position}
+      rotation={rotation}
+    >
+      <planeGeometry args={[scale, scale]} />
+      <shaderMaterial
+        vertexShader={MINI_GALAXY_VERT}
+        fragmentShader={MINI_GALAXY_FRAG}
+        uniforms={uniforms}
+        transparent={true}
+        depthWrite={false}
+        side={THREE.DoubleSide}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
+  );
+}
+
+// ─── DISTANT GALAXIES - Small galaxies scattered around ────
+function DistantGalaxies() {
+  const galaxies = useMemo(() => {
+    const rand = clusterRandom(777);
+    const result: MiniGalaxyProps[] = [];
+
+    // Reddish color palettes
+    const redColors: [number, number, number][] = [
+      [1.0, 0.4, 0.3],   // Bright red-orange
+      [1.0, 0.3, 0.35],  // Deep red
+      [0.95, 0.5, 0.4],  // Coral
+      [1.0, 0.35, 0.5],  // Red-magenta
+      [0.9, 0.45, 0.35], // Rust red
+      [1.0, 0.55, 0.45], // Salmon
+      [0.85, 0.3, 0.4],  // Crimson
+      [1.0, 0.6, 0.5],   // Light coral
+      [0.95, 0.4, 0.45], // Rose red
+      [1.0, 0.5, 0.35],  // Tangerine red
+    ];
+
+    for (let i = 0; i < 10; i++) {
+      // Distribute around the universe - far from center
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const distance = 80 + rand() * 100; // Far away
+
+      const x = Math.sin(phi) * Math.cos(theta) * distance;
+      const y = Math.sin(phi) * Math.sin(theta) * distance * 0.6 - 10; // Slightly flattened distribution
+      const z = Math.cos(phi) * distance - 50; // Push back
+
+      // Varied sizes - small distant galaxies
+      const scale = 12 + rand() * 18;
+
+      // Random rotation to face different directions
+      const rotX = (rand() - 0.5) * Math.PI * 0.8;
+      const rotY = (rand() - 0.5) * Math.PI * 0.8;
+      const rotZ = rand() * Math.PI * 2;
+
+      result.push({
+        position: [x, y, z],
+        scale,
+        rotation: [rotX, rotY, rotZ],
+        colorTint: redColors[i],
+        seed: i * 17 + 3,
+      });
+    }
+
+    return result;
+  }, []);
+
+  return (
+    <>
+      {galaxies.map((galaxy, i) => (
+        <MiniGalaxy key={i} {...galaxy} />
+      ))}
+    </>
+  );
+}
+
 // ─── Milky Way Galactic Band ────────────────────────────
 // Horizontal nebula band with stars, dust, and cosmic clouds
 
@@ -4786,6 +5045,9 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
 
       {/* Milky Way nebula bands - scattered cosmic clouds */}
       {!isLight && <MilkyWayBands />}
+
+      {/* Distant mini galaxies - reddish scattered around universe */}
+      {!isLight && <DistantGalaxies />}
 
       {/* Ambient nebula clouds */}
       <Nebula />
