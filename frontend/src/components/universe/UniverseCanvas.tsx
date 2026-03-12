@@ -3079,6 +3079,14 @@ const GALAXY_FRAG = /* glsl */ `
     // Galaxy tilt (~75 degrees) - steep angle to see side profile
     float tiltAngle = 1.3;
     vec2 tiltedUV = vec2(uv.x, uv.y / cos(tiltAngle));
+
+    // === SLOW GALAXY ROTATION ===
+    // Rotate entire galaxy around center (one rotation every ~3 minutes)
+    float rotationSpeed = 0.035;
+    float rotAngle = uTime * rotationSpeed;
+    mat2 rotMat = mat2(cos(rotAngle), -sin(rotAngle), sin(rotAngle), cos(rotAngle));
+    tiltedUV = rotMat * tiltedUV;
+
     float dist = length(tiltedUV);
     float angle = atan(tiltedUV.y, tiltedUV.x);
 
@@ -3131,12 +3139,6 @@ const GALAXY_FRAG = /* glsl */ `
 
     vec3 allBgStars = bgStars1.rgb + bgStars2.rgb + bgStars3.rgb + bgStars4.rgb + bgStars5.rgb + bgStars6.rgb;
     color += allBgStars * 0.7;
-
-    // === ORBITING SPACE DEBRIS - bright sharp points ===
-    float debris = debrisField(tiltedUV, uTime);
-    vec3 debrisCol = vec3(1.0, 0.97, 0.92);
-    color += debrisCol * debris * 1.8;
-    totalAlpha += debris * 0.7;
 
     // === GALACTIC BULGE / CORE ===
     float coreSize = 0.05;
@@ -3296,7 +3298,7 @@ const GALAXY_FRAG = /* glsl */ `
     color = mix(color, color * 1.3, smoothstep(0.5, 1.5, luminance));
 
     // Final alpha
-    float alpha = clamp(totalAlpha + length(allBgStars) * 0.5 + debris * 0.4, 0.0, 1.0);
+    float alpha = clamp(totalAlpha + length(allBgStars) * 0.5, 0.0, 1.0);
     alpha = max(alpha, smoothstep(0.01, 0.06, length(color)));
     alpha *= edgeFade;
 
@@ -3315,8 +3317,12 @@ function Galaxy3D() {
 
   useFrame(({ clock, mouse }) => {
     if (meshRef.current) {
+      const t = clock.getElapsedTime();
       const mat = meshRef.current.material as THREE.ShaderMaterial;
-      mat.uniforms.uTime.value = clock.getElapsedTime();
+      mat.uniforms.uTime.value = t;
+
+      // Very slow galaxy rotation (one full rotation every ~10 minutes)
+      meshRef.current.rotation.z = 0.2 + t * 0.01;
 
       // Smooth mouse movement
       mouseRef.current.x += ((mouse.x + 1) / 2 - mouseRef.current.x) * 0.02;
@@ -3342,6 +3348,706 @@ function Galaxy3D() {
         blending={THREE.AdditiveBlending}
       />
     </mesh>
+  );
+}
+
+// ─── Milky Way Galactic Band ────────────────────────────
+// Horizontal nebula band with stars, dust, and cosmic clouds
+
+const MILKYWAY_VERT = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const MILKYWAY_FRAG = /* glsl */ `
+  uniform float uTime;
+  uniform float uSeed;
+  uniform float uShapeType; // 0-1 controls shape variation
+  varying vec2 vUv;
+
+  #define PI 3.14159265359
+  #define TAU 6.28318530718
+
+  // Hash functions
+  float hash(float n) { return fract(sin(n + uSeed) * 43758.5453123); }
+  float hash2(vec2 p) { return fract(sin(dot(p + uSeed, vec2(127.1, 311.7))) * 43758.5453); }
+  vec2 hash22(vec2 p) {
+    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+    return fract(sin(p) * 43758.5453);
+  }
+
+  // Smooth noise
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    float a = hash2(i);
+    float b = hash2(i + vec2(1.0, 0.0));
+    float c = hash2(i + vec2(0.0, 1.0));
+    float d = hash2(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
+
+  // FBM with rotation
+  float fbm(vec2 p, int octaves) {
+    float v = 0.0, a = 0.5;
+    mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+    for (int i = 0; i < 8; i++) {
+      if (i >= octaves) break;
+      v += a * noise(p);
+      p = rot * p * 2.0 + 100.0;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  // Ultra-fine FBM
+  float fbmFine(vec2 p) {
+    float v = 0.0, a = 0.5;
+    mat2 rot = mat2(0.707, 0.707, -0.707, 0.707);
+    for (int i = 0; i < 10; i++) {
+      v += a * noise(p);
+      p = rot * p * 2.1 + 50.0;
+      a *= 0.48;
+    }
+    return v;
+  }
+
+  // Ridged turbulence for filaments
+  float ridgedFbm(vec2 p) {
+    float v = 0.0, a = 0.5;
+    mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+    for (int i = 0; i < 5; i++) {
+      float n = abs(noise(p) * 2.0 - 1.0);
+      n = 1.0 - n;
+      n = n * n;
+      v += a * n;
+      p = rot * p * 2.0 + 50.0;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  // Sharp star field
+  vec4 starField(vec2 uv, float density, float sizeBase, float threshold) {
+    vec2 gv = fract(uv * density) - 0.5;
+    vec2 id = floor(uv * density);
+    vec3 starColor = vec3(0.0);
+    float starAlpha = 0.0;
+
+    for (float y = -1.0; y <= 1.0; y++) {
+      for (float x = -1.0; x <= 1.0; x++) {
+        vec2 offset = vec2(x, y);
+        vec2 cellId = id + offset;
+        vec2 rand = hash22(cellId);
+
+        if (rand.x > threshold) {
+          vec2 starPos = offset + rand - 0.5;
+          float d = length(gv - starPos);
+          float magnitude = pow(rand.x - threshold, 0.4) / (1.0 - threshold);
+          float size = sizeBase * (0.2 + magnitude * 0.5);
+
+          // Sharp exponential core
+          float core = exp(-d * d / (size * size * 0.06));
+
+          // Twinkle
+          float twinkle = 0.85 + 0.15 * sin(uTime * (2.0 + rand.y * 5.0) + rand.x * 30.0);
+          float intensity = core * twinkle;
+
+          // Star color temperature
+          vec3 col;
+          float temp = rand.y;
+          if (temp < 0.2) {
+            col = vec3(1.0, 0.75, 0.5);      // Orange/red
+          } else if (temp < 0.5) {
+            col = vec3(1.0, 0.95, 0.85);     // Warm white
+          } else if (temp < 0.8) {
+            col = vec3(0.9, 0.95, 1.0);      // Cool white
+          } else {
+            col = vec3(0.75, 0.85, 1.0);     // Blue
+          }
+
+          starColor += col * intensity * magnitude * 1.5;
+          starAlpha += intensity * magnitude;
+        }
+      }
+    }
+    return vec4(starColor, starAlpha);
+  }
+
+  void main() {
+    vec2 uv = vUv;
+
+    // Center coordinates
+    vec2 centeredUV = uv - vec2(0.5, 0.5);
+
+    // Slow drift animation - direction varies by seed
+    float driftAngle = uSeed * 0.1;
+    float drift = uTime * 0.006;
+    vec2 driftDir = vec2(cos(driftAngle), sin(driftAngle)) * drift;
+    centeredUV += driftDir;
+
+    // === ORGANIC CLOUD SHAPE ===
+    // Use noise to create irregular, organic shapes instead of rectangles
+    float dist = length(centeredUV);
+
+    // Base shape from layered noise - creates organic blobs
+    float shapeNoise1 = fbm(centeredUV * 2.0 + uSeed * 0.5, 5);
+    float shapeNoise2 = fbm(centeredUV * 3.5 + uSeed * 0.7 + 50.0, 4);
+    float shapeNoise3 = ridgedFbm(centeredUV * 1.8 + uSeed * 0.3);
+
+    // Combine noises for organic edge
+    float organicShape = shapeNoise1 * 0.5 + shapeNoise2 * 0.3 + shapeNoise3 * 0.2;
+
+    // Create cloud mask with soft organic edges
+    float cloudMask = smoothstep(0.2, 0.6, organicShape);
+    cloudMask *= smoothstep(0.55, 0.3, dist); // Soft radial fade
+
+    // Add wispy tendrils extending outward
+    float tendrils = ridgedFbm(centeredUV * 4.0 + uSeed + drift * 0.5);
+    tendrils = pow(tendrils, 1.5) * smoothstep(0.5, 0.2, dist);
+    cloudMask = max(cloudMask, tendrils * 0.6);
+
+    // Shape variation based on seed - some more elongated, some rounder
+    float stretch = 1.0 + sin(uSeed * 2.3) * 0.4;
+    float angle = uSeed * 1.7;
+    vec2 rotatedUV = vec2(
+      centeredUV.x * cos(angle) - centeredUV.y * sin(angle),
+      centeredUV.x * sin(angle) + centeredUV.y * cos(angle)
+    );
+    rotatedUV.x *= stretch;
+
+    // Additional shape modulation
+    float shapeVar = fbm(rotatedUV * 2.5 + uSeed, 4);
+    cloudMask *= (0.7 + shapeVar * 0.5);
+
+    vec3 color = vec3(0.0);
+    float totalAlpha = 0.0;
+
+    // === LAYER 1: SPARSE BACKGROUND STARS ===
+    vec4 bgStars1 = starField(uv + uSeed, 60.0, 0.012, 0.91);
+    vec4 bgStars2 = starField(uv + 0.3 + uSeed * 0.5, 90.0, 0.008, 0.93);
+    color += (bgStars1.rgb + bgStars2.rgb) * 0.25;
+
+    // === LAYER 2: NEBULA CLOUDS ===
+    // Color palette varies by seed
+    float colorShift = fract(uSeed * 0.37);
+
+    // Primary nebula color
+    float cloud1 = fbm(centeredUV * 3.0 + driftDir * 2.0 + uSeed, 6);
+    cloud1 = pow(cloud1, 1.3) * cloudMask;
+
+    vec3 primaryColor;
+    if (colorShift < 0.25) {
+      primaryColor = vec3(0.95, 0.55, 0.25); // Warm orange
+    } else if (colorShift < 0.5) {
+      primaryColor = vec3(0.4, 0.55, 0.9);   // Cool blue
+    } else if (colorShift < 0.75) {
+      primaryColor = vec3(0.85, 0.45, 0.55); // Pink/magenta
+    } else {
+      primaryColor = vec3(0.5, 0.8, 0.65);   // Teal/cyan
+    }
+    vec3 nebula1 = primaryColor * cloud1 * 0.8;
+
+    // Secondary color layer
+    float cloud2 = fbm(centeredUV * 2.5 + uSeed * 1.3 + 100.0, 5);
+    cloud2 = pow(cloud2, 1.4) * cloudMask;
+
+    vec3 secondaryColor = vec3(1.0 - primaryColor.r * 0.5, 0.9 - primaryColor.g * 0.3, 1.0 - primaryColor.b * 0.4);
+    vec3 nebula2 = secondaryColor * cloud2 * 0.5;
+
+    // White/cream highlights
+    float cloud3 = fbm(centeredUV * 4.0 + uSeed * 0.8 + 200.0, 5);
+    cloud3 = pow(cloud3, 1.5) * cloudMask * 0.7;
+    vec3 highlights = vec3(1.0, 0.95, 0.88) * cloud3 * 0.5;
+
+    // Combine nebula layers
+    vec3 nebulaColor = nebula1 + nebula2 + highlights;
+
+    // Fine detail texture
+    float fineDetail = fbmFine(centeredUV * 10.0 + drift + uSeed);
+    nebulaColor *= (0.6 + fineDetail * 0.6);
+
+    color += nebulaColor;
+    totalAlpha += (cloud1 + cloud2 + cloud3) * 0.5;
+
+    // === LAYER 3: DARK DUST LANES ===
+    float dust1 = fbm(centeredUV * 5.0 + driftDir + uSeed * 0.5, 6);
+    float dust2 = ridgedFbm(centeredUV * 7.0 + uSeed * 0.8);
+    float darkDust = smoothstep(0.45, 0.7, dust1) * cloudMask;
+    darkDust += smoothstep(0.5, 0.75, dust2) * cloudMask * 0.4;
+
+    // Apply dark regions
+    color *= 1.0 - darkDust * 0.5;
+
+    // === LAYER 4: DENSE STAR CLUSTERS ===
+    float starDensityMask = cloudMask * 1.2;
+
+    vec4 cloudStars1 = starField(centeredUV + drift + uSeed, 180.0, 0.01, 0.89);
+    vec4 cloudStars2 = starField(centeredUV * 1.2 + uSeed * 0.7, 250.0, 0.007, 0.91);
+    vec4 cloudStars3 = starField(centeredUV * 0.9 + uSeed * 1.2, 120.0, 0.012, 0.87);
+
+    vec3 denseStars = (cloudStars1.rgb + cloudStars2.rgb + cloudStars3.rgb) * starDensityMask;
+    color += denseStars * 0.7;
+
+    // === LAYER 5: BRIGHT STAR CLUSTERS ===
+    float clusterNoise = pow(fbm(centeredUV * 5.0 + uSeed, 4), 2.5);
+    float clusters = clusterNoise * cloudMask * 1.2;
+
+    vec4 clusterStars = starField(centeredUV * 1.5 + uSeed * 0.5, 80.0, 0.02, 0.84);
+    color += clusterStars.rgb * clusters * 1.0;
+
+    // Bright cluster glow
+    color += vec3(1.0, 0.95, 0.9) * clusters * 0.25;
+
+    // === LAYER 6: FLOATING PARTICLES ===
+    float particles = fbmFine(centeredUV * 20.0 + uTime * 0.015 + uSeed);
+    particles = smoothstep(0.55, 0.8, particles) * cloudMask;
+    color += vec3(0.9, 0.88, 0.8) * particles * 0.12;
+
+    // === SOFT EDGE GLOW ===
+    float edgeGlow = cloudMask * smoothstep(0.4, 0.15, dist) * 0.1;
+    color += vec3(0.75, 0.8, 0.95) * edgeGlow;
+
+    // === FINAL ADJUSTMENTS ===
+    // Radial soft fade
+    float radialFade = smoothstep(0.55, 0.25, dist);
+    color *= radialFade;
+
+    // Subtle overall pulse
+    float pulse = 0.97 + 0.03 * sin(uTime * 0.25 + uSeed);
+    color *= pulse;
+
+    // Final alpha based on cloud density
+    float alpha = totalAlpha + length(denseStars) * 0.3 + cloudMask * 0.4;
+    alpha = clamp(alpha, 0.0, 1.0);
+    alpha *= radialFade;
+    alpha = max(alpha, length(color) * 0.4);
+
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
+
+interface SpaceClusterProps {
+  position: [number, number, number];
+  scale: number;
+  density?: number;
+  seed?: number;
+}
+
+// Seeded random generator for cluster
+function clusterRandom(seed: number) {
+  let s = seed;
+  return () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+}
+
+// 3D Space Cluster - actual volumetric cluster of stars, debris, gas clouds, comets
+function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterProps) {
+  const groupRef = useRef<THREE.Group>(null);
+  const starsRef = useRef<THREE.Points>(null);
+  const debrisRef = useRef<THREE.InstancedMesh>(null);
+  const gasRef = useRef<THREE.Points>(null);
+  const cometRef = useRef<THREE.Points>(null);
+
+  const rand = useMemo(() => clusterRandom(seed), [seed]);
+
+  // Generate star positions within the cluster volume
+  const starData = useMemo(() => {
+    const count = Math.floor(80 * density);
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+
+    for (let i = 0; i < count; i++) {
+      // Spherical distribution within cluster
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const r = Math.pow(rand(), 0.5) * scale * 0.5; // Concentrate toward center
+
+      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      positions[i * 3 + 2] = r * Math.cos(phi);
+
+      // Star colors - white, blue, orange, yellow
+      const colorType = rand();
+      if (colorType < 0.4) {
+        colors[i * 3] = 1; colors[i * 3 + 1] = 1; colors[i * 3 + 2] = 1; // White
+      } else if (colorType < 0.6) {
+        colors[i * 3] = 0.7; colors[i * 3 + 1] = 0.85; colors[i * 3 + 2] = 1; // Blue
+      } else if (colorType < 0.8) {
+        colors[i * 3] = 1; colors[i * 3 + 1] = 0.9; colors[i * 3 + 2] = 0.7; // Yellow
+      } else {
+        colors[i * 3] = 1; colors[i * 3 + 1] = 0.7; colors[i * 3 + 2] = 0.5; // Orange
+      }
+
+      sizes[i] = 0.1 + rand() * 0.4;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    return geo;
+  }, [scale, density, rand]);
+
+  // Generate debris rock positions and transforms
+  const debrisData = useMemo(() => {
+    const count = Math.floor(25 * density);
+    const dummy = new THREE.Object3D();
+    const matrices: THREE.Matrix4[] = [];
+    const rotationSpeeds: { x: number; y: number; z: number }[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const r = (0.2 + rand() * 0.8) * scale * 0.5;
+
+      dummy.position.set(
+        r * Math.sin(phi) * Math.cos(theta),
+        r * Math.sin(phi) * Math.sin(theta),
+        r * Math.cos(phi)
+      );
+      dummy.rotation.set(rand() * Math.PI, rand() * Math.PI, rand() * Math.PI);
+      dummy.scale.setScalar(0.15 + rand() * 0.5);
+      dummy.updateMatrix();
+      matrices.push(dummy.matrix.clone());
+
+      rotationSpeeds.push({
+        x: (rand() - 0.5) * 0.5,
+        y: (rand() - 0.5) * 0.5,
+        z: (rand() - 0.5) * 0.3,
+      });
+    }
+
+    return { count, matrices, rotationSpeeds };
+  }, [scale, density, rand]);
+
+  // Generate gas cloud particles
+  const gasData = useMemo(() => {
+    const count = Math.floor(40 * density);
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+
+    // Color palette for gas
+    const gasColors = [
+      [0.95, 0.5, 0.3],   // Orange
+      [0.4, 0.6, 0.95],   // Blue
+      [0.9, 0.4, 0.5],    // Pink
+      [0.5, 0.8, 0.7],    // Teal
+      [1, 0.95, 0.85],    // Cream
+    ];
+    const mainColor = gasColors[Math.floor(rand() * gasColors.length)];
+
+    for (let i = 0; i < count; i++) {
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const r = Math.pow(rand(), 0.3) * scale * 0.6;
+
+      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      positions[i * 3 + 2] = r * Math.cos(phi);
+
+      // Vary color slightly
+      colors[i * 3] = mainColor[0] * (0.8 + rand() * 0.4);
+      colors[i * 3 + 1] = mainColor[1] * (0.8 + rand() * 0.4);
+      colors[i * 3 + 2] = mainColor[2] * (0.8 + rand() * 0.4);
+
+      sizes[i] = 1.5 + rand() * 4;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    return geo;
+  }, [scale, density, rand]);
+
+  // Generate comet streaks
+  const cometData = useMemo(() => {
+    const count = Math.floor(5 * density);
+    const positions = new Float32Array(count * 3);
+    const velocities: [number, number, number][] = [];
+
+    for (let i = 0; i < count; i++) {
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const r = rand() * scale * 0.4;
+
+      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      positions[i * 3 + 2] = r * Math.cos(phi);
+
+      velocities.push([
+        (rand() - 0.5) * 0.02,
+        (rand() - 0.5) * 0.02,
+        (rand() - 0.5) * 0.02,
+      ]);
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    return { geo, velocities, count };
+  }, [scale, density, rand]);
+
+  // Glow texture for gas clouds
+  const glowTexture = useMemo(() => {
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    gradient.addColorStop(0, 'rgba(255,255,255,0.8)');
+    gradient.addColorStop(0.3, 'rgba(255,255,255,0.3)');
+    gradient.addColorStop(0.7, 'rgba(255,255,255,0.05)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+    const tex = new THREE.CanvasTexture(canvas);
+    return tex;
+  }, []);
+
+  // Animation
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+
+    // Rotate entire cluster slowly
+    if (groupRef.current) {
+      groupRef.current.rotation.y = t * 0.015 + seed * 0.5;
+      groupRef.current.rotation.x = Math.sin(t * 0.01 + seed) * 0.1;
+    }
+
+    // Animate debris tumbling
+    if (debrisRef.current) {
+      const dummy = new THREE.Object3D();
+      for (let i = 0; i < debrisData.count; i++) {
+        debrisRef.current.getMatrixAt(i, dummy.matrix);
+        dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
+
+        dummy.rotation.x += debrisData.rotationSpeeds[i].x * 0.01;
+        dummy.rotation.y += debrisData.rotationSpeeds[i].y * 0.01;
+        dummy.rotation.z += debrisData.rotationSpeeds[i].z * 0.01;
+
+        dummy.updateMatrix();
+        debrisRef.current.setMatrixAt(i, dummy.matrix);
+      }
+      debrisRef.current.instanceMatrix.needsUpdate = true;
+    }
+
+    // Animate comet positions
+    if (cometRef.current) {
+      const positions = cometRef.current.geometry.attributes.position.array as Float32Array;
+      for (let i = 0; i < cometData.count; i++) {
+        positions[i * 3] += cometData.velocities[i][0];
+        positions[i * 3 + 1] += cometData.velocities[i][1];
+        positions[i * 3 + 2] += cometData.velocities[i][2];
+
+        // Wrap around if too far
+        const dist = Math.sqrt(
+          positions[i * 3] ** 2 +
+          positions[i * 3 + 1] ** 2 +
+          positions[i * 3 + 2] ** 2
+        );
+        if (dist > scale * 0.6) {
+          positions[i * 3] *= -0.5;
+          positions[i * 3 + 1] *= -0.5;
+          positions[i * 3 + 2] *= -0.5;
+        }
+      }
+      cometRef.current.geometry.attributes.position.needsUpdate = true;
+    }
+
+    // Twinkle stars
+    if (starsRef.current) {
+      const sizes = starsRef.current.geometry.attributes.size.array as Float32Array;
+      for (let i = 0; i < sizes.length; i++) {
+        const baseSize = 0.1 + ((seed + i) % 100) / 100 * 0.4;
+        sizes[i] = baseSize * (0.7 + 0.3 * Math.sin(t * 3 + i * 0.5));
+      }
+      starsRef.current.geometry.attributes.size.needsUpdate = true;
+    }
+  });
+
+  return (
+    <group ref={groupRef} position={position}>
+      {/* Gas clouds - soft glowing sprites */}
+      <points ref={gasRef} geometry={gasData}>
+        <pointsMaterial
+          size={3}
+          map={glowTexture}
+          vertexColors
+          transparent
+          opacity={0.25}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          sizeAttenuation
+        />
+      </points>
+
+      {/* Stars - sharp bright points */}
+      <points ref={starsRef} geometry={starData}>
+        <pointsMaterial
+          size={0.3}
+          vertexColors
+          transparent
+          opacity={0.9}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          sizeAttenuation
+        />
+      </points>
+
+      {/* Debris rocks - instanced icosahedrons */}
+      <instancedMesh
+        ref={debrisRef}
+        args={[undefined, undefined, debrisData.count]}
+      >
+        <icosahedronGeometry args={[0.5, 0]} />
+        <meshStandardMaterial
+          color="#8b7355"
+          roughness={0.9}
+          metalness={0.1}
+          emissive="#2a2015"
+          emissiveIntensity={0.2}
+        />
+      </instancedMesh>
+
+      {/* Comets - moving bright particles with slight trails */}
+      <points ref={cometRef} geometry={cometData.geo}>
+        <pointsMaterial
+          size={0.8}
+          color="#aaccff"
+          transparent
+          opacity={0.8}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          sizeAttenuation
+        />
+      </points>
+    </group>
+  );
+}
+
+
+// Seeded random for consistent generation
+function seededRandom(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+}
+
+// 3D Space clusters dispersed spherically 360° around the universe
+function MilkyWayBands() {
+  const clusters = useMemo(() => {
+    const result: Array<{
+      position: [number, number, number];
+      scale: number;
+      density: number;
+      seed: number;
+    }> = [];
+
+    const rand = seededRandom(42);
+
+    // Generate clusters distributed in full 3D sphere
+    const totalClusters = 40;
+
+    for (let i = 0; i < totalClusters; i++) {
+      // Golden spiral for even spherical coverage
+      const goldenRatio = (1 + Math.sqrt(5)) / 2;
+      const theta = 2 * Math.PI * i / goldenRatio;
+      const phi = Math.acos(1 - 2 * (i + 0.5) / totalClusters);
+
+      // Add randomness
+      const thetaRand = theta + (rand() - 0.5) * 0.6;
+      const phiRand = phi + (rand() - 0.5) * 0.4;
+
+      // Distance varies
+      const distMin = 45;
+      const distMax = 120;
+      const distance = distMin + rand() * (distMax - distMin);
+
+      // Spherical to cartesian
+      const x = Math.sin(phiRand) * Math.cos(thetaRand) * distance;
+      const y = Math.cos(phiRand) * distance;
+      const z = Math.sin(phiRand) * Math.sin(thetaRand) * distance;
+
+      // Varied sizes
+      const sizeRoll = rand();
+      let scale: number;
+      let density: number;
+
+      if (sizeRoll < 0.15) {
+        scale = 40 + rand() * 30; // Large clusters
+        density = 1.2 + rand() * 0.5;
+      } else if (sizeRoll < 0.45) {
+        scale = 20 + rand() * 20; // Medium
+        density = 0.8 + rand() * 0.4;
+      } else {
+        scale = 8 + rand() * 15; // Small
+        density = 0.5 + rand() * 0.4;
+      }
+
+      result.push({
+        position: [x, y, z] as [number, number, number],
+        scale,
+        density,
+        seed: i * 137 + 17,
+      });
+    }
+
+    // Add depth layers
+    const depthLayers = [
+      { dist: 30, count: 6, scaleRange: [5, 12], densityRange: [0.3, 0.6] },
+      { dist: 60, count: 8, scaleRange: [15, 30], densityRange: [0.6, 1.0] },
+      { dist: 100, count: 5, scaleRange: [35, 55], densityRange: [0.8, 1.3] },
+    ];
+
+    depthLayers.forEach((layer) => {
+      for (let i = 0; i < layer.count; i++) {
+        const theta = rand() * Math.PI * 2;
+        const phi = (rand() - 0.5) * Math.PI;
+
+        const dist = layer.dist + (rand() - 0.5) * 15;
+        const x = Math.sin(phi + Math.PI / 2) * Math.cos(theta) * dist;
+        const y = Math.cos(phi + Math.PI / 2) * dist;
+        const z = Math.sin(phi + Math.PI / 2) * Math.sin(theta) * dist;
+
+        const scale = layer.scaleRange[0] + rand() * (layer.scaleRange[1] - layer.scaleRange[0]);
+        const density = layer.densityRange[0] + rand() * (layer.densityRange[1] - layer.densityRange[0]);
+
+        result.push({
+          position: [x, y, z] as [number, number, number],
+          scale,
+          density,
+          seed: result.length * 137 + 500,
+        });
+      }
+    });
+
+    return result;
+  }, []);
+
+  return (
+    <>
+      {clusters.map((cluster, i) => (
+        <SpaceCluster
+          key={i}
+          position={cluster.position}
+          scale={cluster.scale}
+          density={cluster.density}
+          seed={cluster.seed}
+        />
+      ))}
+    </>
   );
 }
 
@@ -3680,6 +4386,9 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
 
       {/* Cinematic spiral galaxy in distant background */}
       {!isLight && <Galaxy3D />}
+
+      {/* Milky Way nebula bands - scattered cosmic clouds */}
+      {!isLight && <MilkyWayBands />}
 
       {/* Ambient nebula clouds */}
       <Nebula />
