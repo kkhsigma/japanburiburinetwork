@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Search, X, Sun, Moon } from "lucide-react";
@@ -15,6 +15,35 @@ const navItems = [
   { label: "ブログ", href: "/blog" },
 ];
 
+// Hook to detect browser zoom level and return inverse scale
+function useZoomCompensation() {
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const detectZoom = () => {
+      // Use devicePixelRatio as base, compare with initial
+      const baseRatio = 1; // Assume 100% zoom at load
+      const currentRatio = window.devicePixelRatio || 1;
+
+      // Alternative method: compare outer/inner width
+      const zoomLevel = window.outerWidth / window.innerWidth;
+
+      // Use the more reliable measurement
+      const detectedZoom = Math.abs(zoomLevel - 1) > 0.01 ? zoomLevel : currentRatio / baseRatio;
+
+      // Clamp the inverse scale to reasonable bounds
+      const inverseScale = Math.min(Math.max(1 / detectedZoom, 0.5), 2);
+      setScale(inverseScale);
+    };
+
+    detectZoom();
+    window.addEventListener("resize", detectZoom);
+    return () => window.removeEventListener("resize", detectZoom);
+  }, []);
+
+  return scale;
+}
+
 interface NavBarProps {
   theme: "dark" | "light";
   onToggleTheme: () => void;
@@ -23,6 +52,7 @@ interface NavBarProps {
 export function NavBar({ theme, onToggleTheme }: NavBarProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const isDark = theme === "dark";
+  const zoomScale = useZoomCompensation();
 
   return (
     <motion.header
@@ -48,7 +78,14 @@ export function NavBar({ theme, onToggleTheme }: NavBarProps) {
 
       <div className="flex items-center justify-between px-5 sm:px-8 h-12">
         {/* Left: Glowing JBN logo */}
-        <Link href="/" className="flex items-center gap-2 group">
+        <Link
+          href="/"
+          className="flex items-center gap-2 group"
+          style={{
+            transform: `scale(${zoomScale})`,
+            transformOrigin: "left center",
+          }}
+        >
           <span
             className="text-[20px] font-bold tracking-[-0.02em] transition-all duration-500"
             style={{
@@ -74,7 +111,13 @@ export function NavBar({ theme, onToggleTheme }: NavBarProps) {
         </Link>
 
         {/* Center: Nav items */}
-        <nav className="hidden md:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2">
+        <nav
+          className="hidden md:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2"
+          style={{
+            transform: `translateX(-50%) scale(${zoomScale})`,
+            transformOrigin: "center center",
+          }}
+        >
           {navItems.map((item) => (
             <Link
               key={item.label}
@@ -124,7 +167,13 @@ export function NavBar({ theme, onToggleTheme }: NavBarProps) {
         </nav>
 
         {/* Right: search + theme toggle + status */}
-        <div className="flex items-center gap-2.5">
+        <div
+          className="flex items-center gap-2.5"
+          style={{
+            transform: `scale(${zoomScale})`,
+            transformOrigin: "right center",
+          }}
+        >
           {/* Search */}
           <div className="relative">
             {searchOpen ? (

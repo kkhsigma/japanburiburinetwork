@@ -3,6 +3,7 @@
 import { useRef, useMemo, useState, useEffect, createContext, useContext, Fragment, Suspense, useCallback } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html, Stars, Text, Billboard } from "@react-three/drei";
+import { motion, AnimatePresence } from "framer-motion";
 import * as THREE from "three";
 import { mockCompounds } from "@/lib/mock-data";
 
@@ -5273,6 +5274,28 @@ function SunProjector({
 function QualityToggle() {
   const { quality, effectiveQuality, setQuality, deviceInfo } = useQuality();
   const [showTooltip, setShowTooltip] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
+  const [hasAnimatedIn, setHasAnimatedIn] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isPressed, setIsPressed] = useState(false);
+
+  // Trigger entrance animation after mount
+  useEffect(() => {
+    const timer = setTimeout(() => setHasAnimatedIn(true), 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Hide when scrolled past the universe section
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY;
+      setIsVisible(scrollY < 50);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const cycleQuality = useCallback(() => {
     const modes: QualityLevel[] = ["auto", "low", "high"];
@@ -5292,38 +5315,56 @@ function QualityToggle() {
     return "軽量";
   };
 
+  // Calculate button scale for hover/press effects
+  const buttonScale = isPressed ? 0.95 : isHovered ? 1.05 : 1;
+
   return (
     <div
       style={{
-        position: "absolute",
-        bottom: 16,
-        right: 16,
-        zIndex: 100,
+        position: "fixed",
+        bottom: 56,
+        right: 24,
+        zIndex: 9999,
+        opacity: hasAnimatedIn && isVisible ? 1 : 0,
+        transform: hasAnimatedIn && isVisible ? "translateY(0) scale(1)" : "translateY(20px) scale(0.9)",
+        transition: "opacity 0.4s ease-out, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
+        pointerEvents: hasAnimatedIn && isVisible ? "auto" : "none",
       }}
     >
       <button
         onClick={cycleQuality}
-        onMouseEnter={() => setShowTooltip(true)}
-        onMouseLeave={() => setShowTooltip(false)}
+        onMouseEnter={() => { setShowTooltip(true); setIsHovered(true); }}
+        onMouseLeave={() => { setShowTooltip(false); setIsHovered(false); setIsPressed(false); }}
+        onMouseDown={() => setIsPressed(true)}
+        onMouseUp={() => setIsPressed(false)}
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 6,
-          padding: "8px 12px",
+          gap: 8,
+          padding: "8px 14px",
           borderRadius: 10,
-          border: "1px solid rgba(255,255,255,0.1)",
+          border: effectiveQuality === "high"
+            ? "1px solid rgba(34,211,238,0.3)"
+            : "1px solid rgba(255,255,255,0.15)",
           background: effectiveQuality === "high"
-            ? "linear-gradient(135deg, rgba(6,182,212,0.15), rgba(6,182,212,0.05))"
-            : "rgba(30,30,30,0.8)",
-          color: effectiveQuality === "high" ? "#22d3ee" : "#888",
+            ? "linear-gradient(135deg, rgba(6,182,212,0.2), rgba(6,182,212,0.08))"
+            : "rgba(25,25,25,0.85)",
+          color: effectiveQuality === "high" ? "#22d3ee" : "#999",
           fontSize: 12,
+          fontWeight: 500,
           fontFamily: "var(--font-space-grotesk), sans-serif",
           cursor: "pointer",
-          backdropFilter: "blur(8px)",
-          transition: "all 0.2s ease",
+          backdropFilter: "blur(10px)",
+          transition: "all 0.2s ease, transform 0.15s ease",
+          transform: `scale(${buttonScale})`,
+          boxShadow: effectiveQuality === "high"
+            ? "0 2px 12px rgba(6,182,212,0.25)"
+            : "0 2px 12px rgba(0,0,0,0.4)",
         }}
       >
-        <span style={{ fontSize: 14 }}>{getIcon()}</span>
+        <span style={{ fontSize: 16, transition: "transform 0.2s ease" }}>
+          {getIcon()}
+        </span>
         <span>{getLabel()}</span>
       </button>
 
@@ -5334,17 +5375,25 @@ function QualityToggle() {
             position: "absolute",
             bottom: 48,
             right: 0,
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: "rgba(20,20,20,0.95)",
-            border: "1px solid rgba(255,255,255,0.1)",
-            backdropFilter: "blur(12px)",
-            minWidth: 200,
-            fontSize: 11,
+            padding: "12px 16px",
+            borderRadius: 12,
+            background: "rgba(15,15,15,0.98)",
+            border: "1px solid rgba(255,255,255,0.15)",
+            backdropFilter: "blur(16px)",
+            minWidth: 220,
+            fontSize: 12,
             color: "#aaa",
-            lineHeight: 1.5,
+            lineHeight: 1.6,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+            animation: "tooltipFadeIn 0.15s ease-out",
           }}
         >
+          <style>{`
+            @keyframes tooltipFadeIn {
+              from { opacity: 0; transform: translateY(5px) scale(0.95); }
+              to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+          `}</style>
           <div style={{ color: "#fff", marginBottom: 6, fontWeight: 500 }}>
             グラフィック品質
           </div>
@@ -5393,22 +5442,19 @@ function UniverseCanvasInner({
   containerRef: React.RefObject<HTMLDivElement>;
 }) {
   return (
-    <>
-      <Canvas
-        camera={{ position: [0, 12, 22], fov: 45 }}
-        gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
-        dpr={[1, 1.5]}
-        style={{ cursor: "auto" }}
-      >
-        <Suspense fallback={null}>
-          <Scene theme={theme} skipIntro={skipIntro} />
-          {sunPosRef && containerRef.current && (
-            <SunProjector sunPosRef={sunPosRef} containerRef={containerRef} />
-          )}
-        </Suspense>
-      </Canvas>
-      <QualityToggle />
-    </>
+    <Canvas
+      camera={{ position: [0, 12, 22], fov: 45 }}
+      gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+      dpr={[1, 1.5]}
+      style={{ cursor: "auto" }}
+    >
+      <Suspense fallback={null}>
+        <Scene theme={theme} skipIntro={skipIntro} />
+        {sunPosRef && containerRef.current && (
+          <SunProjector sunPosRef={sunPosRef} containerRef={containerRef} />
+        )}
+      </Suspense>
+    </Canvas>
   );
 }
 
@@ -5433,6 +5479,7 @@ export function UniverseCanvas({
           containerRef={containerRef}
         />
       </div>
+      <QualityToggle />
     </QualityProvider>
   );
 }

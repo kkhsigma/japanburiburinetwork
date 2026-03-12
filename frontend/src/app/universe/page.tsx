@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RotateCcw, ChevronDown } from "lucide-react";
 import { UniverseCanvas } from "@/components/universe/UniverseCanvas";
@@ -19,6 +19,11 @@ export default function UniversePage() {
   const [canvasKey, setCanvasKey] = useState(0); // remount canvas for replay
   const [entryFade, setEntryFade] = useState(true); // fade-in from transition
   const [hasScrolled, setHasScrolled] = useState(false); // hide scroll indicator after scrolling
+
+  // Mobile touch handling: single finger for universe navigation, two fingers to scroll
+  const universeRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef(0);
+  const isTwoFingerTouch = useRef(false);
 
   useEffect(() => {
     try {
@@ -50,6 +55,48 @@ export default function UniversePage() {
       clearTimeout(timer);
       window.removeEventListener("pageshow", onPageShow);
       window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  // Mobile: Two-finger scroll on universe section
+  useEffect(() => {
+    const universeEl = universeRef.current;
+    if (!universeEl) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      isTwoFingerTouch.current = e.touches.length >= 2;
+      if (e.touches.length >= 2) {
+        // Two fingers: record starting Y position for scroll
+        touchStartY.current = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length >= 2 && isTwoFingerTouch.current) {
+        // Two-finger scroll: calculate delta and scroll page
+        const currentY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        const deltaY = touchStartY.current - currentY;
+        window.scrollBy(0, deltaY * 1.5);
+        touchStartY.current = currentY;
+        e.preventDefault(); // Prevent pinch zoom
+      } else if (e.touches.length === 1 && !isTwoFingerTouch.current) {
+        // Single finger: prevent page scroll, let canvas handle it
+        e.preventDefault();
+      }
+    };
+
+    const handleTouchEnd = () => {
+      isTwoFingerTouch.current = false;
+    };
+
+    universeEl.addEventListener("touchstart", handleTouchStart, { passive: false });
+    universeEl.addEventListener("touchmove", handleTouchMove, { passive: false });
+    universeEl.addEventListener("touchend", handleTouchEnd, { passive: true });
+
+    return () => {
+      universeEl.removeEventListener("touchstart", handleTouchStart);
+      universeEl.removeEventListener("touchmove", handleTouchMove);
+      universeEl.removeEventListener("touchend", handleTouchEnd);
     };
   }, []);
 
@@ -107,7 +154,8 @@ export default function UniversePage() {
       />
 
       {/* 3D Universe — always present at top */}
-      <div className="relative pt-12">
+      {/* Mobile: single finger navigates universe, two fingers scroll page */}
+      <div ref={universeRef} className="relative pt-12 touch-none">
         <UniverseCanvas key={canvasKey} theme={theme} skipIntro={skipIntro} />
         {/* Replay intro — ghost button, blends into canvas edge */}
         {skipIntro && (
@@ -135,7 +183,8 @@ export default function UniversePage() {
               transition={{ delay: 1, duration: 0.8 }}
               className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 text-gray-400 pointer-events-none"
             >
-              <span className="text-sm font-light tracking-[0.3em] uppercase">scroll</span>
+              <span className="text-sm font-light tracking-[0.3em] uppercase hidden sm:block">scroll</span>
+              <span className="text-xs font-light tracking-[0.2em] uppercase sm:hidden">2本指でスクロール</span>
               <motion.div
                 animate={{ y: [0, 8, 0] }}
                 transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
