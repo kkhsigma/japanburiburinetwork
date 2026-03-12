@@ -2979,7 +2979,7 @@ const GALAXY_FRAG = /* glsl */ `
   }
 `;
 
-// ─── HIGH QUALITY Galaxy Shader (for powerful devices) ───
+// ─── ULTRA HIGH QUALITY Galaxy Shader (for powerful devices) ───
 const GALAXY_FRAG_HQ = /* glsl */ `
   uniform float uTime;
   varying vec2 vUv;
@@ -2988,9 +2988,16 @@ const GALAXY_FRAG_HQ = /* glsl */ `
   #define TAU 6.28318530718
 
   // === PREMIUM HASH FUNCTIONS ===
+  float hash(float n) { return fract(sin(n) * 43758.5453123); }
   float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   vec2 hash22(vec2 p) {
     p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+    return fract(sin(p) * 43758.5453);
+  }
+  vec3 hash33(vec3 p) {
+    p = vec3(dot(p, vec3(127.1, 311.7, 74.7)),
+             dot(p, vec3(269.5, 183.3, 246.1)),
+             dot(p, vec3(113.5, 271.9, 124.6)));
     return fract(sin(p) * 43758.5453);
   }
 
@@ -3006,7 +3013,7 @@ const GALAXY_FRAG_HQ = /* glsl */ `
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
   }
 
-  // === MULTI-OCTAVE FBM ===
+  // === MULTI-OCTAVE FBM VARIANTS ===
   float fbm(vec2 p, int octaves) {
     float v = 0.0, a = 0.5;
     mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
@@ -3019,14 +3026,29 @@ const GALAXY_FRAG_HQ = /* glsl */ `
     return v;
   }
 
-  // Ultra-fine detail FBM
+  // Ultra-fine detail FBM (10 octaves)
   float fbmUltra(vec2 p) {
     float v = 0.0, a = 0.5;
     mat2 rot = mat2(0.707, 0.707, -0.707, 0.707);
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 10; i++) {
       v += a * noise(p);
       p = rot * p * 2.2 + 37.0;
       a *= 0.47;
+    }
+    return v;
+  }
+
+  // Ridged turbulence for filaments
+  float ridgedFbm(vec2 p) {
+    float v = 0.0, a = 0.5;
+    mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+    for (int i = 0; i < 6; i++) {
+      float n = abs(noise(p) * 2.0 - 1.0);
+      n = 1.0 - n;
+      n = n * n;
+      v += a * n;
+      p = rot * p * 2.0 + 50.0;
+      a *= 0.5;
     }
     return v;
   }
@@ -3080,7 +3102,48 @@ const GALAXY_FRAG_HQ = /* glsl */ `
     return vec4(starColor, starAlpha);
   }
 
-  // === SPIRAL ARM ===
+  // === ORBITING DEBRIS SYSTEM ===
+  float debrisParticle(vec2 uv, float time, float orbitA, float orbitB, float phase, float speed, float size) {
+    float angle = time * speed + phase;
+    vec2 pos = vec2(cos(angle) * orbitA, sin(angle) * orbitB);
+    pos += vec2(sin(time * 0.7 + phase * 2.0), cos(time * 0.5 + phase * 3.0)) * 0.006;
+    float d = length(uv - pos);
+    float brightness = exp(-d * d / (size * size * 0.04));
+    return brightness;
+  }
+
+  float debrisRing(vec2 uv, float time, float baseRadius, float width, int count, float speedMult, float seed) {
+    float debris = 0.0;
+    for (int i = 0; i < 24; i++) {
+      if (i >= count) break;
+      float fi = float(i);
+      float h1 = hash(fi + seed);
+      float h2 = hash(fi + seed + 100.0);
+      float h3 = hash(fi + seed + 200.0);
+      float orbitA = baseRadius + (h1 - 0.5) * width;
+      float orbitB = orbitA * (0.85 + h2 * 0.3);
+      float phase = h1 * TAU;
+      float speed = (0.15 + h2 * 0.25) * speedMult * (h3 > 0.5 ? 1.0 : -1.0);
+      float size = 0.0015 + h3 * 0.003;
+      debris += debrisParticle(uv, time, orbitA, orbitB, phase, speed, size) * (0.4 + h2 * 0.6);
+    }
+    return debris;
+  }
+
+  float debrisField(vec2 uv, float time) {
+    float debris = 0.0;
+    debris += debrisRing(uv, time, 0.06, 0.02, 18, 2.0, 0.0) * 0.9;
+    debris += debrisRing(uv, time, 0.10, 0.025, 20, 1.5, 50.0) * 0.8;
+    debris += debrisRing(uv, time, 0.15, 0.03, 22, 1.0, 100.0) * 0.7;
+    debris += debrisRing(uv, time, 0.20, 0.035, 24, 0.8, 150.0) * 0.6;
+    debris += debrisRing(uv, time, 0.26, 0.04, 22, 0.6, 200.0) * 0.5;
+    debris += debrisRing(uv, time, 0.32, 0.045, 20, 0.4, 250.0) * 0.4;
+    debris += debrisRing(uv, time, 0.38, 0.05, 18, 0.3, 300.0) * 0.35;
+    debris += debrisRing(uv, time, 0.43, 0.04, 16, 0.25, 350.0) * 0.3;
+    return debris;
+  }
+
+  // === SPIRAL ARM WITH BRANCHING ===
   float spiralArm(vec2 uv, float armCount, float tightness, float time, float armWidth) {
     float dist = length(uv);
     float angle = atan(uv.y, uv.x);
@@ -3101,7 +3164,31 @@ const GALAXY_FRAG_HQ = /* glsl */ `
     f += spiralArm(uv, 6.0, 4.2, time * 1.1 + 0.7, 0.08) * 0.15;
     f += spiralArm(uv, 8.0, 4.6, time * 0.6 + 1.2, 0.06) * 0.1;
     f += spiralArm(uv, 10.0, 5.0, time * 1.3 + 0.5, 0.04) * 0.08;
+    f += spiralArm(uv, 14.0, 5.5, time * 0.9 + 2.1, 0.03) * 0.05;
+    f += spiralArm(uv, 18.0, 6.0, time * 1.5 + 1.7, 0.02) * 0.03;
     return f;
+  }
+
+  // === HII REGIONS & STELLAR NURSERIES ===
+  float stellarNurseries(vec2 uv, float armMask, float time) {
+    float nurseries = 0.0;
+    float n1 = pow(fbm(uv * 25.0 + time * 0.1, 5), 3.0);
+    float n2 = pow(fbm(uv * 40.0 - time * 0.08, 4), 2.5);
+    nurseries = (n1 * 0.6 + n2 * 0.4) * armMask;
+    nurseries = smoothstep(0.15, 0.5, nurseries);
+    return nurseries;
+  }
+
+  // === DARK NEBULAE (Bok Globules) ===
+  float darkNebulae(vec2 uv, float time) {
+    float dark = 0.0;
+    float d1 = fbm(uv * 8.0 + time * 0.02, 6);
+    float d2 = fbmUltra(uv * 15.0 - time * 0.01);
+    dark = d1 * 0.6 + d2 * 0.4;
+    dark = smoothstep(0.55, 0.75, dark);
+    float filaments = ridgedFbm(uv * 30.0 + time * 0.03);
+    dark += filaments * 0.15 * smoothstep(0.4, 0.6, d1);
+    return dark;
   }
 
   // === GALAXY COLOR PALETTE ===
@@ -3140,12 +3227,17 @@ const GALAXY_FRAG_HQ = /* glsl */ `
     vec2 lightDir = normalize(vec2(0.7, 0.5));
     float facingLight = dot(normalize(tiltedUV + 0.001), lightDir) * 0.5 + 0.5;
 
+    // Strong randomized reflections
     float lightNoise1 = fbm(tiltedUV * 8.0 + time * 0.3, 5);
     float lightNoise2 = fbmUltra(tiltedUV * 20.0 - time * 0.2);
-    float reflectionNoise = lightNoise1 * 0.5 + lightNoise2 * 0.5;
+    float lightNoise3 = pow(fbm(tiltedUV * 35.0 + time * 0.5, 4), 1.5);
+    float reflectionNoise = lightNoise1 * 0.5 + lightNoise2 * 0.3 + lightNoise3 * 0.4;
     float brightSpots = smoothstep(0.5, 0.8, reflectionNoise) * 1.5;
-    float lightVariation = 0.25 + facingLight * 0.75 * (0.5 + reflectionNoise * 0.7);
-    lightVariation += brightSpots * facingLight * 0.3;
+    float shadowPatches = smoothstep(0.6, 0.3, lightNoise1) * 0.6;
+    float lightVariation = facingLight * (0.4 + reflectionNoise * 0.8);
+    lightVariation += brightSpots * facingLight;
+    lightVariation *= (1.0 - shadowPatches * (1.0 - facingLight));
+    lightVariation = 0.25 + lightVariation * 0.75;
 
     float sparkleNoise = fbmUltra(tiltedUV * 60.0 + uTime * 0.1);
     float sparkles = smoothstep(0.75, 0.9, sparkleNoise) * facingLight * 2.0;
@@ -3153,15 +3245,17 @@ const GALAXY_FRAG_HQ = /* glsl */ `
     vec3 color = vec3(0.0);
     float totalAlpha = 0.0;
 
-    // Background stars
+    // Deep background starfield (6 layers)
     vec4 bgStars1 = starField(uv * 0.7, 60.0, 0.018, 0.88);
     vec4 bgStars2 = starField(uv * 1.1 + 0.3, 100.0, 0.012, 0.9);
     vec4 bgStars3 = starField(uv * 0.5 + 0.7, 40.0, 0.025, 0.85);
     vec4 bgStars4 = starField(uv * 1.5 + 0.15, 150.0, 0.008, 0.92);
-    vec3 allBgStars = bgStars1.rgb + bgStars2.rgb + bgStars3.rgb + bgStars4.rgb;
+    vec4 bgStars5 = starField(uv * 2.0 + 0.5, 220.0, 0.005, 0.94);
+    vec4 bgStars6 = starField(uv * 2.5 + 0.8, 300.0, 0.003, 0.95);
+    vec3 allBgStars = bgStars1.rgb + bgStars2.rgb + bgStars3.rgb + bgStars4.rgb + bgStars5.rgb + bgStars6.rgb;
     color += allBgStars * 0.7;
 
-    // Galactic core
+    // Galactic bulge / core
     float coreSize = 0.05;
     float coreDist = length(tiltedUV);
     float innerCore = exp(-coreDist * coreDist / (coreSize * coreSize * 0.5)) * 2.0;
@@ -3170,7 +3264,8 @@ const GALAXY_FRAG_HQ = /* glsl */ `
 
     float coreGrain = fbmUltra(tiltedUV * 150.0 + uTime * 0.05);
     float coreFine = fbmUltra(tiltedUV * 250.0 - uTime * 0.03);
-    innerCore *= 0.7 + coreGrain * 0.3 + coreFine * 0.15;
+    float coreUltra = fbmUltra(tiltedUV * 400.0 + uTime * 0.02);
+    innerCore *= 0.7 + coreGrain * 0.3 + coreFine * 0.15 + coreUltra * 0.08;
 
     vec3 coreCol = mix(vec3(1.0, 0.92, 0.75), vec3(1.0, 0.98, 0.95), innerCore * 0.35);
     coreCol = mix(coreCol, vec3(1.0, 0.88, 0.7), smoothstep(0.0, 0.06, coreDist));
@@ -3180,7 +3275,7 @@ const GALAXY_FRAG_HQ = /* glsl */ `
     color += coreCol * (innerCore + midCore + outerCore);
     totalAlpha += innerCore * 0.85 + midCore * 0.4 + outerCore * 0.2;
 
-    // Spiral arms
+    // Primary spiral arms
     float arm1 = spiralArm(tiltedUV, 2.0, 2.6, time, 0.38);
     float arm2 = spiralArm(tiltedUV, 2.0, 2.6, time + PI, 0.38);
     float arm3 = spiralArm(tiltedUV, 2.0, 3.0, time + PI * 0.5, 0.28) * 0.55;
@@ -3190,21 +3285,21 @@ const GALAXY_FRAG_HQ = /* glsl */ `
     float filaments = spiralFilaments(tiltedUV, time);
     totalArms += filaments;
 
-    // Arm texture
+    // Arm texture & structure (multi-scale dust and gas)
     float dustCoarse = fbm(tiltedUV * 6.0 + time * 0.3, 5) * 0.5;
     float dustMedium = fbm(tiltedUV * 15.0 + time * 0.2, 6) * 0.35;
     float dustFine = fbmUltra(tiltedUV * 35.0 + time * 0.15) * 0.25;
     float dustUltra = fbmUltra(tiltedUV * 70.0 - time * 0.1) * 0.15;
+    float dustMicro = fbmUltra(tiltedUV * 120.0 + time * 0.08) * 0.1;
     float clusters = pow(fbm(tiltedUV * 20.0 + time * 0.25, 4), 2.5) * 1.8;
     float microClusters = pow(fbmUltra(tiltedUV * 50.0 + time * 0.12), 2.0) * 0.8;
 
-    float armDensity = totalArms * (0.55 + dustCoarse + dustMedium + dustFine + dustUltra);
+    float armDensity = totalArms * (0.55 + dustCoarse + dustMedium + dustFine + dustUltra + dustMicro);
     armDensity += clusters * totalArms * 0.5;
     armDensity += microClusters * totalArms * 0.3;
 
-    // Stellar nurseries
-    float n1 = pow(fbm(tiltedUV * 25.0 + time * 0.1, 5), 3.0);
-    float nurseries = smoothstep(0.15, 0.5, n1 * totalArms);
+    // Stellar nurseries in arms
+    float nurseries = stellarNurseries(tiltedUV, totalArms, time);
 
     float temp = clamp(1.0 - dist * 1.7, 0.0, 1.0);
     vec3 armColor = galaxyColor(armDensity, temp, nurseries);
@@ -3212,7 +3307,10 @@ const GALAXY_FRAG_HQ = /* glsl */ `
     armColor += vec3(1.0, 0.97, 0.9) * sparkles * totalArms * 0.5;
     float dustReflection = brightSpots * totalArms * 0.4;
     armColor += vec3(0.95, 0.92, 0.85) * dustReflection;
-    armColor += vec3(0.85, 0.9, 1.0) * clusters * totalArms * 0.4 * lightVariation;
+
+    // Bright OB associations
+    float obStars = clusters * totalArms * 0.4;
+    armColor += vec3(0.85, 0.9, 1.0) * obStars * lightVariation;
 
     vec4 armStars = starField(tiltedUV * 1.2, 300.0, 0.01, 0.93);
     armColor += armStars.rgb * totalArms * 0.6;
@@ -3220,36 +3318,50 @@ const GALAXY_FRAG_HQ = /* glsl */ `
     color += armColor;
     totalAlpha += armDensity * 0.75;
 
-    // Dark dust
-    float darkDust = fbm(tiltedUV * 8.0 + time * 0.02, 6);
-    darkDust = smoothstep(0.55, 0.75, darkDust);
-    color *= 1.0 - darkDust * totalArms * 0.35;
+    // Dark nebulae / dust lanes
+    float darkDust = darkNebulae(tiltedUV, time);
+    float dustLaneMask = totalArms * darkDust * 0.45;
+    color *= 1.0 - dustLaneMask * 0.5;
 
-    // ISM and diffuse
+    // Fine extinction
+    float fineExtinction = fbmUltra(tiltedUV * 45.0 + time * 0.05);
+    fineExtinction = smoothstep(0.5, 0.7, fineExtinction) * totalArms * 0.15;
+    color *= 1.0 - fineExtinction * 0.3;
+
+    // Interstellar medium
     float ism = fbmUltra(tiltedUV * 22.0 + uTime * 0.03);
     ism *= smoothstep(0.38, 0.1, dist);
     color += vec3(0.9, 0.92, 0.97) * ism * 0.035 * lightVariation;
 
+    // Diffuse galactic light
     float diffuse = exp(-dist * dist / 0.025) * 0.08;
     color += vec3(0.95, 0.93, 0.88) * diffuse * lightVariation;
 
-    // Halo
+    // Outer halo with rim lighting
     float halo = exp(-dist * dist / 0.06) * 0.04;
     float haloTex = fbmUltra(tiltedUV * 15.0 + uTime * 0.02);
     halo *= 0.8 + haloTex * 0.3;
     float rimLight = smoothstep(0.12, 0.32, abs(tiltedUV.y)) * smoothstep(0.45, 0.2, dist);
     rimLight *= facingLight * 1.2 * (0.6 + reflectionNoise * 0.6);
     halo += rimLight * 0.25;
-    halo += sparkles * smoothstep(0.1, 0.25, abs(tiltedUV.y)) * 0.4;
+    float rimSparkle = sparkles * smoothstep(0.1, 0.25, abs(tiltedUV.y)) * 0.4;
+    halo += rimSparkle;
+
+    // Globular cluster hints
+    vec4 gcStars = starField(tiltedUV * 0.8, 30.0, 0.025, 0.85);
+    halo += gcStars.a * 0.08 * smoothstep(0.15, 0.35, dist);
+
     color += vec3(0.9, 0.92, 0.97) * halo;
 
-    // Foreground stars
+    // Foreground stars (3 layers)
     vec4 fgStars1 = starField(uv + 0.5, 22.0, 0.03, 0.78);
     vec4 fgStars2 = starField(uv * 0.8 + 0.2, 18.0, 0.04, 0.75);
+    vec4 fgStars3 = starField(uv * 0.6 + 0.4, 15.0, 0.05, 0.72);
     color += fgStars1.rgb * 0.9;
     color += fgStars2.rgb * 0.7;
+    color += fgStars3.rgb * 0.5;
 
-    // Final
+    // Final adjustments
     float pulse = 0.99 + 0.01 * sin(uTime * 0.4);
     color *= pulse;
     float edgeFade = smoothstep(0.54, 0.30, dist);
