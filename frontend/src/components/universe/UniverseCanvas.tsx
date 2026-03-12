@@ -4728,6 +4728,102 @@ function WarpStreaks({ active }: { active: boolean }) {
   );
 }
 
+// ─── Momentum Orbit Controls ────────────────────────────
+// Continues spinning in the direction of user's last swipe
+
+interface MomentumOrbitControlsProps {
+  enabled: boolean;
+  travelTarget: string | null;
+}
+
+function MomentumOrbitControls({ enabled, travelTarget }: MomentumOrbitControlsProps) {
+  const controlsRef = useRef<any>(null);
+  const isDragging = useRef(false);
+  const lastX = useRef(0);
+  const lastTime = useRef(0);
+  const velocityX = useRef(0);
+  const rotateSpeed = useRef(0.12); // Default auto-rotate speed
+  const baseSpeed = 0.12; // Minimum rotation speed
+  const maxSpeed = 0.8; // Maximum rotation speed
+
+  useFrame(() => {
+    if (controlsRef.current && !travelTarget) {
+      controlsRef.current.autoRotateSpeed = rotateSpeed.current;
+    }
+  });
+
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      isDragging.current = true;
+      lastX.current = e.clientX;
+      lastTime.current = performance.now();
+      velocityX.current = 0;
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!isDragging.current) return;
+
+      const now = performance.now();
+      const dt = now - lastTime.current;
+
+      if (dt > 0) {
+        const dx = e.clientX - lastX.current;
+        // Smooth velocity tracking
+        velocityX.current = velocityX.current * 0.7 + (dx / dt) * 0.3;
+      }
+
+      lastX.current = e.clientX;
+      lastTime.current = now;
+    };
+
+    const onPointerUp = () => {
+      if (!isDragging.current) return;
+      isDragging.current = false;
+
+      // Apply momentum based on swipe velocity
+      // Negative velocity = swiped left = rotate right (positive speed)
+      // Positive velocity = swiped right = rotate left (negative speed)
+      const swipeDirection = -Math.sign(velocityX.current);
+      const swipeMagnitude = Math.abs(velocityX.current);
+
+      if (swipeMagnitude > 0.05) {
+        // User swiped with enough velocity
+        const newSpeed = baseSpeed + Math.min(swipeMagnitude * 0.5, maxSpeed - baseSpeed);
+        rotateSpeed.current = swipeDirection * newSpeed;
+      }
+      // If swipe was too slow, keep current rotation direction
+    };
+
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+    };
+  }, []);
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      makeDefault
+      enabled={enabled}
+      enableDamping
+      dampingFactor={0.05}
+      enableZoom={false}
+      maxPolarAngle={Math.PI * 0.82}
+      minPolarAngle={Math.PI * 0.12}
+      autoRotate={!travelTarget}
+      autoRotateSpeed={rotateSpeed.current}
+      enablePan={false}
+    />
+  );
+}
+
 // ─── Camera Controller ──────────────────────────────────
 
 function CameraController({
@@ -5052,17 +5148,9 @@ function Scene({ theme = "dark", skipIntro = false }: { theme?: "dark" | "light"
         />
       )}
 
-      <OrbitControls
-        makeDefault
+      <MomentumOrbitControls
         enabled={!travelTarget}
-        enableDamping
-        dampingFactor={0.05}
-        enableZoom={false}
-        maxPolarAngle={Math.PI * 0.82}
-        minPolarAngle={Math.PI * 0.12}
-        autoRotate={!travelTarget}
-        autoRotateSpeed={0.12}
-        enablePan={false}
+        travelTarget={travelTarget}
       />
 
     </IntroContext.Provider>
