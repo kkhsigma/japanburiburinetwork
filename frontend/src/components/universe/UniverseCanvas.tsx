@@ -3647,58 +3647,408 @@ function clusterRandom(seed: number) {
   };
 }
 
-// 3D Space Cluster - actual volumetric cluster of stars, debris, gas clouds, comets
+// ─── CLUSTER SHADER FOR SHARP STARS ─────────────────────────
+const CLUSTER_STAR_VERT = /* glsl */ `
+  attribute float size;
+  attribute float brightness;
+  varying vec3 vColor;
+  varying float vBrightness;
+
+  void main() {
+    vColor = color;
+    vBrightness = brightness;
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = size * (300.0 / -mvPosition.z);
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+
+const CLUSTER_STAR_FRAG = /* glsl */ `
+  varying vec3 vColor;
+  varying float vBrightness;
+
+  void main() {
+    vec2 center = gl_PointCoord - 0.5;
+    float dist = length(center);
+
+    // Sharp exponential core - crisp pinpoint like galaxy stars
+    float core = exp(-dist * dist * 45.0);
+
+    // Tiny diffraction spikes for bright stars
+    float spikes = 0.0;
+    if (vBrightness > 0.7) {
+      float spike1 = exp(-abs(center.x) * 25.0) * exp(-abs(center.y) * 4.0);
+      float spike2 = exp(-abs(center.y) * 25.0) * exp(-abs(center.x) * 4.0);
+      spikes = (spike1 + spike2) * 0.25 * (vBrightness - 0.7) * 3.33;
+    }
+
+    float alpha = clamp(core + spikes, 0.0, 1.0);
+    if (alpha < 0.01) discard;
+
+    gl_FragColor = vec4(vColor * (core + spikes * 0.8), alpha);
+  }
+`;
+
+// ─── NEBULA DUST SHADER ─────────────────────────────────────
+const DUST_VERT = /* glsl */ `
+  attribute float size;
+  attribute float opacity;
+  varying vec3 vColor;
+  varying float vOpacity;
+
+  void main() {
+    vColor = color;
+    vOpacity = opacity;
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = size * (200.0 / -mvPosition.z);
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+
+const DUST_FRAG = /* glsl */ `
+  varying vec3 vColor;
+  varying float vOpacity;
+
+  void main() {
+    vec2 center = gl_PointCoord - 0.5;
+    float dist = length(center);
+
+    // Soft gaussian falloff for dust
+    float alpha = exp(-dist * dist * 8.0) * vOpacity;
+    if (alpha < 0.005) discard;
+
+    gl_FragColor = vec4(vColor, alpha);
+  }
+`;
+
+// ─── COMET TRAIL SHADER ─────────────────────────────────────
+const COMET_VERT = /* glsl */ `
+  attribute float size;
+  attribute float trailPos;
+  varying float vTrailPos;
+  varying vec3 vColor;
+
+  void main() {
+    vTrailPos = trailPos;
+    vColor = color;
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = size * (250.0 / -mvPosition.z);
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+
+const COMET_FRAG = /* glsl */ `
+  varying float vTrailPos;
+  varying vec3 vColor;
+
+  void main() {
+    vec2 center = gl_PointCoord - 0.5;
+    float dist = length(center);
+
+    // Sharp head, fading tail
+    float headIntensity = 1.0 - vTrailPos;
+    float alpha = exp(-dist * dist * (15.0 + vTrailPos * 20.0)) * headIntensity;
+    if (alpha < 0.01) discard;
+
+    // Brighter blue-white at head, fading cyan in tail
+    vec3 col = mix(vec3(0.9, 0.95, 1.0), vec3(0.5, 0.8, 1.0), vTrailPos);
+    gl_FragColor = vec4(col * headIntensity * 1.5, alpha);
+  }
+`;
+
+// 3D Space Cluster - ultra-detailed volumetric cluster like the galaxy
 function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const starsRef = useRef<THREE.Points>(null);
+  const brightStarsRef = useRef<THREE.Points>(null);
   const debrisRef = useRef<THREE.InstancedMesh>(null);
-  const gasRef = useRef<THREE.Points>(null);
+  const dustRef = useRef<THREE.Points>(null);
+  const fineDustRef = useRef<THREE.Points>(null);
+  const nurseryRef = useRef<THREE.Points>(null);
   const cometRef = useRef<THREE.Points>(null);
+  const filamentRef = useRef<THREE.Points>(null);
 
   const rand = useMemo(() => clusterRandom(seed), [seed]);
 
-  // Generate star positions within the cluster volume
+  // ─── DENSE STAR FIELD - Many sharp pinpoint stars ───────────
   const starData = useMemo(() => {
-    const count = Math.floor(80 * density);
+    const count = Math.floor(350 * density); // Way more stars
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
     const sizes = new Float32Array(count);
+    const brightness = new Float32Array(count);
 
     for (let i = 0; i < count; i++) {
-      // Spherical distribution within cluster
+      // Spherical distribution with concentration toward center
       const theta = rand() * Math.PI * 2;
       const phi = Math.acos(2 * rand() - 1);
-      const r = Math.pow(rand(), 0.5) * scale * 0.5; // Concentrate toward center
+      const r = Math.pow(rand(), 0.4) * scale * 0.55;
 
-      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      positions[i * 3 + 2] = r * Math.cos(phi);
+      // Add some noise to break up uniformity
+      const noiseX = (rand() - 0.5) * scale * 0.1;
+      const noiseY = (rand() - 0.5) * scale * 0.1;
+      const noiseZ = (rand() - 0.5) * scale * 0.1;
 
-      // Star colors - white, blue, orange, yellow
-      const colorType = rand();
-      if (colorType < 0.4) {
-        colors[i * 3] = 1; colors[i * 3 + 1] = 1; colors[i * 3 + 2] = 1; // White
-      } else if (colorType < 0.6) {
-        colors[i * 3] = 0.7; colors[i * 3 + 1] = 0.85; colors[i * 3 + 2] = 1; // Blue
-      } else if (colorType < 0.8) {
-        colors[i * 3] = 1; colors[i * 3 + 1] = 0.9; colors[i * 3 + 2] = 0.7; // Yellow
+      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta) + noiseX;
+      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta) + noiseY;
+      positions[i * 3 + 2] = r * Math.cos(phi) + noiseZ;
+
+      // Spectral classification like the galaxy shader
+      const temp = rand();
+      if (temp < 0.12) {
+        // M-type Red giants
+        colors[i * 3] = 1; colors[i * 3 + 1] = 0.65; colors[i * 3 + 2] = 0.45;
+      } else if (temp < 0.28) {
+        // K-type Orange
+        colors[i * 3] = 1; colors[i * 3 + 1] = 0.82; colors[i * 3 + 2] = 0.65;
+      } else if (temp < 0.55) {
+        // G-type Yellow-white (like our sun)
+        colors[i * 3] = 1; colors[i * 3 + 1] = 0.97; colors[i * 3 + 2] = 0.92;
+      } else if (temp < 0.75) {
+        // F-type White
+        colors[i * 3] = 0.98; colors[i * 3 + 1] = 0.98; colors[i * 3 + 2] = 1;
+      } else if (temp < 0.9) {
+        // A-type Blue-white
+        colors[i * 3] = 0.88; colors[i * 3 + 1] = 0.93; colors[i * 3 + 2] = 1;
       } else {
-        colors[i * 3] = 1; colors[i * 3 + 1] = 0.7; colors[i * 3 + 2] = 0.5; // Orange
+        // O/B-type Hot blue
+        colors[i * 3] = 0.7; colors[i * 3 + 1] = 0.82; colors[i * 3 + 2] = 1;
       }
 
-      sizes[i] = 0.1 + rand() * 0.4;
+      // Varied magnitudes
+      const mag = rand();
+      sizes[i] = 0.08 + mag * 0.25;
+      brightness[i] = 0.4 + mag * 0.6;
     }
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    geo.setAttribute('brightness', new THREE.BufferAttribute(brightness, 1));
     return geo;
   }, [scale, density, rand]);
 
-  // Generate debris rock positions and transforms
-  const debrisData = useMemo(() => {
+  // ─── BRIGHT PROMINENT STARS - Fewer but eye-catching ────────
+  const brightStarData = useMemo(() => {
     const count = Math.floor(25 * density);
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const brightness = new Float32Array(count);
+
+    for (let i = 0; i < count; i++) {
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const r = (0.1 + rand() * 0.9) * scale * 0.5;
+
+      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      positions[i * 3 + 2] = r * Math.cos(phi);
+
+      // Bright stars are mostly white/blue
+      const temp = rand();
+      if (temp < 0.3) {
+        colors[i * 3] = 1; colors[i * 3 + 1] = 0.98; colors[i * 3 + 2] = 0.95;
+      } else if (temp < 0.6) {
+        colors[i * 3] = 0.92; colors[i * 3 + 1] = 0.95; colors[i * 3 + 2] = 1;
+      } else {
+        colors[i * 3] = 0.8; colors[i * 3 + 1] = 0.88; colors[i * 3 + 2] = 1;
+      }
+
+      sizes[i] = 0.35 + rand() * 0.5;
+      brightness[i] = 0.75 + rand() * 0.25;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    geo.setAttribute('brightness', new THREE.BufferAttribute(brightness, 1));
+    return geo;
+  }, [scale, density, rand]);
+
+  // ─── DUST CLOUDS - Medium soft particles ────────────────────
+  const dustData = useMemo(() => {
+    const count = Math.floor(120 * density);
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const opacity = new Float32Array(count);
+
+    // Determine cluster's dominant color
+    const colorVariant = Math.floor(rand() * 5);
+    const baseColors = [
+      [0.95, 0.7, 0.5],   // Warm orange/gold
+      [0.6, 0.75, 1.0],   // Cool blue
+      [1.0, 0.6, 0.7],    // Pink HII region
+      [0.7, 0.9, 0.85],   // Teal/cyan
+      [0.95, 0.92, 0.85], // Cream/white
+    ];
+    const baseCol = baseColors[colorVariant];
+
+    for (let i = 0; i < count; i++) {
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const r = Math.pow(rand(), 0.35) * scale * 0.6;
+
+      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      positions[i * 3 + 2] = r * Math.cos(phi);
+
+      // Vary color
+      const colorShift = rand() * 0.3;
+      colors[i * 3] = baseCol[0] * (0.85 + colorShift);
+      colors[i * 3 + 1] = baseCol[1] * (0.85 + colorShift);
+      colors[i * 3 + 2] = baseCol[2] * (0.85 + colorShift);
+
+      sizes[i] = 1.5 + rand() * 4.5;
+      opacity[i] = 0.08 + rand() * 0.18;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    geo.setAttribute('opacity', new THREE.BufferAttribute(opacity, 1));
+    return geo;
+  }, [scale, density, rand]);
+
+  // ─── FINE DUST - Ultra-fine grain texture ───────────────────
+  const fineDustData = useMemo(() => {
+    const count = Math.floor(200 * density);
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const opacity = new Float32Array(count);
+
+    for (let i = 0; i < count; i++) {
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const r = rand() * scale * 0.65;
+
+      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      positions[i * 3 + 2] = r * Math.cos(phi);
+
+      // Subtle warm/cool tint
+      const tint = rand();
+      if (tint < 0.5) {
+        colors[i * 3] = 1; colors[i * 3 + 1] = 0.95; colors[i * 3 + 2] = 0.88;
+      } else {
+        colors[i * 3] = 0.88; colors[i * 3 + 1] = 0.92; colors[i * 3 + 2] = 1;
+      }
+
+      sizes[i] = 0.4 + rand() * 1.2;
+      opacity[i] = 0.03 + rand() * 0.08;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    geo.setAttribute('opacity', new THREE.BufferAttribute(opacity, 1));
+    return geo;
+  }, [scale, density, rand]);
+
+  // ─── STELLAR NURSERY - Bright pink/magenta HII regions ──────
+  const nurseryData = useMemo(() => {
+    const count = Math.floor(35 * density);
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const opacity = new Float32Array(count);
+
+    // Cluster nurseries in specific regions
+    const clusterCenters = [
+      [(rand() - 0.5) * scale * 0.4, (rand() - 0.5) * scale * 0.4, (rand() - 0.5) * scale * 0.4],
+      [(rand() - 0.5) * scale * 0.5, (rand() - 0.5) * scale * 0.5, (rand() - 0.5) * scale * 0.5],
+    ];
+
+    for (let i = 0; i < count; i++) {
+      const center = clusterCenters[i % clusterCenters.length];
+      const spread = scale * 0.15;
+
+      positions[i * 3] = center[0] + (rand() - 0.5) * spread;
+      positions[i * 3 + 1] = center[1] + (rand() - 0.5) * spread;
+      positions[i * 3 + 2] = center[2] + (rand() - 0.5) * spread;
+
+      // HII region pink/magenta colors
+      colors[i * 3] = 1;
+      colors[i * 3 + 1] = 0.45 + rand() * 0.25;
+      colors[i * 3 + 2] = 0.6 + rand() * 0.3;
+
+      sizes[i] = 2 + rand() * 5;
+      opacity[i] = 0.12 + rand() * 0.2;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    geo.setAttribute('opacity', new THREE.BufferAttribute(opacity, 1));
+    return geo;
+  }, [scale, density, rand]);
+
+  // ─── FILAMENTS - Wispy dust streaks ─────────────────────────
+  const filamentData = useMemo(() => {
+    const count = Math.floor(80 * density);
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const opacity = new Float32Array(count);
+
+    // Create several filament strands
+    const strands = 4;
+    const perStrand = Math.floor(count / strands);
+
+    for (let s = 0; s < strands; s++) {
+      // Random direction for this filament
+      const dirTheta = rand() * Math.PI * 2;
+      const dirPhi = Math.acos(2 * rand() - 1);
+      const dir = [
+        Math.sin(dirPhi) * Math.cos(dirTheta),
+        Math.sin(dirPhi) * Math.sin(dirTheta),
+        Math.cos(dirPhi),
+      ];
+
+      const startOffset = (rand() - 0.5) * scale * 0.3;
+
+      for (let j = 0; j < perStrand; j++) {
+        const i = s * perStrand + j;
+        if (i >= count) break;
+
+        const t = (j / perStrand - 0.5) * scale * 0.5;
+        const wobble = (rand() - 0.5) * scale * 0.08;
+
+        positions[i * 3] = dir[0] * t + startOffset + wobble;
+        positions[i * 3 + 1] = dir[1] * t + wobble;
+        positions[i * 3 + 2] = dir[2] * t + wobble;
+
+        // Dark/absorption or bright emission
+        const bright = rand() > 0.6;
+        if (bright) {
+          colors[i * 3] = 0.9; colors[i * 3 + 1] = 0.85; colors[i * 3 + 2] = 0.75;
+        } else {
+          colors[i * 3] = 0.15; colors[i * 3 + 1] = 0.12; colors[i * 3 + 2] = 0.1;
+        }
+
+        sizes[i] = 0.6 + rand() * 1.8;
+        opacity[i] = bright ? 0.08 + rand() * 0.12 : 0.15 + rand() * 0.2;
+      }
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    geo.setAttribute('opacity', new THREE.BufferAttribute(opacity, 1));
+    return geo;
+  }, [scale, density, rand]);
+
+  // ─── DEBRIS ROCKS ───────────────────────────────────────────
+  const debrisData = useMemo(() => {
+    const count = Math.floor(40 * density);
     const dummy = new THREE.Object3D();
     const matrices: THREE.Matrix4[] = [];
     const rotationSpeeds: { x: number; y: number; z: number }[] = [];
@@ -3706,7 +4056,7 @@ function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterPr
     for (let i = 0; i < count; i++) {
       const theta = rand() * Math.PI * 2;
       const phi = Math.acos(2 * rand() - 1);
-      const r = (0.2 + rand() * 0.8) * scale * 0.5;
+      const r = (0.15 + rand() * 0.85) * scale * 0.55;
 
       dummy.position.set(
         r * Math.sin(phi) * Math.cos(theta),
@@ -3714,114 +4064,138 @@ function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterPr
         r * Math.cos(phi)
       );
       dummy.rotation.set(rand() * Math.PI, rand() * Math.PI, rand() * Math.PI);
-      dummy.scale.setScalar(0.15 + rand() * 0.5);
+
+      // More varied sizes
+      const sizeRoll = rand();
+      let rockScale;
+      if (sizeRoll < 0.7) {
+        rockScale = 0.08 + rand() * 0.2; // Small
+      } else if (sizeRoll < 0.9) {
+        rockScale = 0.25 + rand() * 0.35; // Medium
+      } else {
+        rockScale = 0.5 + rand() * 0.6; // Large
+      }
+      dummy.scale.setScalar(rockScale);
       dummy.updateMatrix();
       matrices.push(dummy.matrix.clone());
 
       rotationSpeeds.push({
-        x: (rand() - 0.5) * 0.5,
-        y: (rand() - 0.5) * 0.5,
-        z: (rand() - 0.5) * 0.3,
+        x: (rand() - 0.5) * 0.4,
+        y: (rand() - 0.5) * 0.4,
+        z: (rand() - 0.5) * 0.25,
       });
     }
 
     return { count, matrices, rotationSpeeds };
   }, [scale, density, rand]);
 
-  // Generate gas cloud particles
-  const gasData = useMemo(() => {
-    const count = Math.floor(40 * density);
-    const positions = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-    const sizes = new Float32Array(count);
+  // ─── COMETS WITH TRAILS ─────────────────────────────────────
+  const cometData = useMemo(() => {
+    const cometCount = Math.floor(8 * density);
+    const trailLength = 12;
+    const totalParticles = cometCount * trailLength;
 
-    // Color palette for gas
-    const gasColors = [
-      [0.95, 0.5, 0.3],   // Orange
-      [0.4, 0.6, 0.95],   // Blue
-      [0.9, 0.4, 0.5],    // Pink
-      [0.5, 0.8, 0.7],    // Teal
-      [1, 0.95, 0.85],    // Cream
-    ];
-    const mainColor = gasColors[Math.floor(rand() * gasColors.length)];
+    const positions = new Float32Array(totalParticles * 3);
+    const colors = new Float32Array(totalParticles * 3);
+    const sizes = new Float32Array(totalParticles);
+    const trailPos = new Float32Array(totalParticles);
 
-    for (let i = 0; i < count; i++) {
+    const cometStates: {
+      pos: [number, number, number];
+      vel: [number, number, number];
+      trail: [number, number, number][];
+    }[] = [];
+
+    for (let c = 0; c < cometCount; c++) {
       const theta = rand() * Math.PI * 2;
       const phi = Math.acos(2 * rand() - 1);
-      const r = Math.pow(rand(), 0.3) * scale * 0.6;
+      const r = rand() * scale * 0.4;
 
-      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      positions[i * 3 + 2] = r * Math.cos(phi);
+      const pos: [number, number, number] = [
+        r * Math.sin(phi) * Math.cos(theta),
+        r * Math.sin(phi) * Math.sin(theta),
+        r * Math.cos(phi),
+      ];
 
-      // Vary color slightly
-      colors[i * 3] = mainColor[0] * (0.8 + rand() * 0.4);
-      colors[i * 3 + 1] = mainColor[1] * (0.8 + rand() * 0.4);
-      colors[i * 3 + 2] = mainColor[2] * (0.8 + rand() * 0.4);
+      const speed = 0.015 + rand() * 0.02;
+      const velTheta = rand() * Math.PI * 2;
+      const velPhi = Math.acos(2 * rand() - 1);
+      const vel: [number, number, number] = [
+        Math.sin(velPhi) * Math.cos(velTheta) * speed,
+        Math.sin(velPhi) * Math.sin(velTheta) * speed,
+        Math.cos(velPhi) * speed,
+      ];
 
-      sizes[i] = 1.5 + rand() * 4;
+      const trail: [number, number, number][] = [];
+      for (let t = 0; t < trailLength; t++) {
+        trail.push([...pos]);
+      }
+
+      cometStates.push({ pos, vel, trail });
+
+      // Initialize trail particles
+      for (let t = 0; t < trailLength; t++) {
+        const idx = c * trailLength + t;
+        positions[idx * 3] = pos[0];
+        positions[idx * 3 + 1] = pos[1];
+        positions[idx * 3 + 2] = pos[2];
+
+        colors[idx * 3] = 0.9;
+        colors[idx * 3 + 1] = 0.95;
+        colors[idx * 3 + 2] = 1;
+
+        const tp = t / trailLength;
+        trailPos[idx] = tp;
+        sizes[idx] = 0.4 * (1 - tp * 0.7);
+      }
     }
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-    return geo;
+    geo.setAttribute('trailPos', new THREE.BufferAttribute(trailPos, 1));
+
+    return { geo, cometStates, cometCount, trailLength };
   }, [scale, density, rand]);
 
-  // Generate comet streaks
-  const cometData = useMemo(() => {
-    const count = Math.floor(5 * density);
-    const positions = new Float32Array(count * 3);
-    const velocities: [number, number, number][] = [];
+  // ─── SHADER MATERIALS ───────────────────────────────────────
+  const starMaterial = useMemo(() => new THREE.ShaderMaterial({
+    vertexShader: CLUSTER_STAR_VERT,
+    fragmentShader: CLUSTER_STAR_FRAG,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexColors: true,
+  }), []);
 
-    for (let i = 0; i < count; i++) {
-      const theta = rand() * Math.PI * 2;
-      const phi = Math.acos(2 * rand() - 1);
-      const r = rand() * scale * 0.4;
+  const dustMaterial = useMemo(() => new THREE.ShaderMaterial({
+    vertexShader: DUST_VERT,
+    fragmentShader: DUST_FRAG,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexColors: true,
+  }), []);
 
-      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-      positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      positions[i * 3 + 2] = r * Math.cos(phi);
+  const cometMaterial = useMemo(() => new THREE.ShaderMaterial({
+    vertexShader: COMET_VERT,
+    fragmentShader: COMET_FRAG,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexColors: true,
+  }), []);
 
-      velocities.push([
-        (rand() - 0.5) * 0.02,
-        (rand() - 0.5) * 0.02,
-        (rand() - 0.5) * 0.02,
-      ]);
-    }
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    return { geo, velocities, count };
-  }, [scale, density, rand]);
-
-  // Glow texture for gas clouds
-  const glowTexture = useMemo(() => {
-    const size = 64;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d')!;
-    const gradient = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
-    gradient.addColorStop(0, 'rgba(255,255,255,0.8)');
-    gradient.addColorStop(0.3, 'rgba(255,255,255,0.3)');
-    gradient.addColorStop(0.7, 'rgba(255,255,255,0.05)');
-    gradient.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, size, size);
-    const tex = new THREE.CanvasTexture(canvas);
-    return tex;
-  }, []);
-
-  // Animation
+  // ─── ANIMATION ──────────────────────────────────────────────
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
 
-    // Rotate entire cluster slowly
+    // Rotate entire cluster slowly with subtle oscillation
     if (groupRef.current) {
-      groupRef.current.rotation.y = t * 0.015 + seed * 0.5;
-      groupRef.current.rotation.x = Math.sin(t * 0.01 + seed) * 0.1;
+      groupRef.current.rotation.y = t * 0.012 + seed * 0.5;
+      groupRef.current.rotation.x = Math.sin(t * 0.008 + seed) * 0.08;
+      groupRef.current.rotation.z = Math.sin(t * 0.006 + seed * 1.5) * 0.04;
     }
 
     // Animate debris tumbling
@@ -3831,9 +4205,9 @@ function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterPr
         debrisRef.current.getMatrixAt(i, dummy.matrix);
         dummy.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
 
-        dummy.rotation.x += debrisData.rotationSpeeds[i].x * 0.01;
-        dummy.rotation.y += debrisData.rotationSpeeds[i].y * 0.01;
-        dummy.rotation.z += debrisData.rotationSpeeds[i].z * 0.01;
+        dummy.rotation.x += debrisData.rotationSpeeds[i].x * 0.008;
+        dummy.rotation.y += debrisData.rotationSpeeds[i].y * 0.008;
+        dummy.rotation.z += debrisData.rotationSpeeds[i].z * 0.008;
 
         dummy.updateMatrix();
         debrisRef.current.setMatrixAt(i, dummy.matrix);
@@ -3841,24 +4215,39 @@ function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterPr
       debrisRef.current.instanceMatrix.needsUpdate = true;
     }
 
-    // Animate comet positions
+    // Animate comet trails
     if (cometRef.current) {
       const positions = cometRef.current.geometry.attributes.position.array as Float32Array;
-      for (let i = 0; i < cometData.count; i++) {
-        positions[i * 3] += cometData.velocities[i][0];
-        positions[i * 3 + 1] += cometData.velocities[i][1];
-        positions[i * 3 + 2] += cometData.velocities[i][2];
+      const { cometStates, cometCount, trailLength } = cometData;
 
-        // Wrap around if too far
-        const dist = Math.sqrt(
-          positions[i * 3] ** 2 +
-          positions[i * 3 + 1] ** 2 +
-          positions[i * 3 + 2] ** 2
-        );
+      for (let c = 0; c < cometCount; c++) {
+        const state = cometStates[c];
+
+        // Update head position
+        state.pos[0] += state.vel[0];
+        state.pos[1] += state.vel[1];
+        state.pos[2] += state.vel[2];
+
+        // Wrap around
+        const dist = Math.sqrt(state.pos[0] ** 2 + state.pos[1] ** 2 + state.pos[2] ** 2);
         if (dist > scale * 0.6) {
-          positions[i * 3] *= -0.5;
-          positions[i * 3 + 1] *= -0.5;
-          positions[i * 3 + 2] *= -0.5;
+          state.pos[0] *= -0.4;
+          state.pos[1] *= -0.4;
+          state.pos[2] *= -0.4;
+        }
+
+        // Shift trail
+        for (let i = trailLength - 1; i > 0; i--) {
+          state.trail[i] = [...state.trail[i - 1]];
+        }
+        state.trail[0] = [...state.pos];
+
+        // Update geometry
+        for (let t = 0; t < trailLength; t++) {
+          const idx = c * trailLength + t;
+          positions[idx * 3] = state.trail[t][0];
+          positions[idx * 3 + 1] = state.trail[t][1];
+          positions[idx * 3 + 2] = state.trail[t][2];
         }
       }
       cometRef.current.geometry.attributes.position.needsUpdate = true;
@@ -3867,70 +4256,60 @@ function SpaceCluster({ position, scale, density = 1, seed = 0 }: SpaceClusterPr
     // Twinkle stars
     if (starsRef.current) {
       const sizes = starsRef.current.geometry.attributes.size.array as Float32Array;
+      const brightness = starsRef.current.geometry.attributes.brightness.array as Float32Array;
       for (let i = 0; i < sizes.length; i++) {
-        const baseSize = 0.1 + ((seed + i) % 100) / 100 * 0.4;
-        sizes[i] = baseSize * (0.7 + 0.3 * Math.sin(t * 3 + i * 0.5));
+        const baseSize = 0.08 + brightness[i] * 0.25;
+        sizes[i] = baseSize * (0.85 + 0.15 * Math.sin(t * (2.5 + (seed + i) % 10 * 0.3) + i * 0.3));
       }
       starsRef.current.geometry.attributes.size.needsUpdate = true;
+    }
+
+    // Twinkle bright stars with more variation
+    if (brightStarsRef.current) {
+      const sizes = brightStarsRef.current.geometry.attributes.size.array as Float32Array;
+      const brightness = brightStarsRef.current.geometry.attributes.brightness.array as Float32Array;
+      for (let i = 0; i < sizes.length; i++) {
+        const baseSize = 0.35 + brightness[i] * 0.5;
+        sizes[i] = baseSize * (0.8 + 0.2 * Math.sin(t * (1.8 + (seed + i) % 8 * 0.4) + i * 0.7));
+      }
+      brightStarsRef.current.geometry.attributes.size.needsUpdate = true;
     }
   });
 
   return (
     <group ref={groupRef} position={position}>
-      {/* Gas clouds - soft glowing sprites */}
-      <points ref={gasRef} geometry={gasData}>
-        <pointsMaterial
-          size={3}
-          map={glowTexture}
-          vertexColors
-          transparent
-          opacity={0.25}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-          sizeAttenuation
-        />
-      </points>
+      {/* Fine dust - ultra-fine grain texture */}
+      <points ref={fineDustRef} geometry={fineDustData} material={dustMaterial} />
 
-      {/* Stars - sharp bright points */}
-      <points ref={starsRef} geometry={starData}>
-        <pointsMaterial
-          size={0.3}
-          vertexColors
-          transparent
-          opacity={0.9}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-          sizeAttenuation
-        />
-      </points>
+      {/* Dust clouds - soft colored nebulosity */}
+      <points ref={dustRef} geometry={dustData} material={dustMaterial} />
 
-      {/* Debris rocks - instanced icosahedrons */}
-      <instancedMesh
-        ref={debrisRef}
-        args={[undefined, undefined, debrisData.count]}
-      >
-        <icosahedronGeometry args={[0.5, 0]} />
+      {/* Filaments - wispy dust streaks */}
+      <points ref={filamentRef} geometry={filamentData} material={dustMaterial} />
+
+      {/* Stellar nursery - bright pink HII regions */}
+      <points ref={nurseryRef} geometry={nurseryData} material={dustMaterial} />
+
+      {/* Dense star field - many sharp pinpoints */}
+      <points ref={starsRef} geometry={starData} material={starMaterial} />
+
+      {/* Bright prominent stars - with diffraction spikes */}
+      <points ref={brightStarsRef} geometry={brightStarData} material={starMaterial} />
+
+      {/* Debris rocks - varied sizes */}
+      <instancedMesh ref={debrisRef} args={[undefined, undefined, debrisData.count]}>
+        <icosahedronGeometry args={[0.5, 1]} />
         <meshStandardMaterial
-          color="#8b7355"
-          roughness={0.9}
-          metalness={0.1}
-          emissive="#2a2015"
-          emissiveIntensity={0.2}
+          color="#706050"
+          roughness={0.85}
+          metalness={0.15}
+          emissive="#201510"
+          emissiveIntensity={0.15}
         />
       </instancedMesh>
 
-      {/* Comets - moving bright particles with slight trails */}
-      <points ref={cometRef} geometry={cometData.geo}>
-        <pointsMaterial
-          size={0.8}
-          color="#aaccff"
-          transparent
-          opacity={0.8}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-          sizeAttenuation
-        />
-      </points>
+      {/* Comets with trails */}
+      <points ref={cometRef} geometry={cometData.geo} material={cometMaterial} />
     </group>
   );
 }
