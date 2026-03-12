@@ -3683,28 +3683,49 @@ function DistantGalaxies() {
     const rand = clusterRandom(777);
     const result: MiniGalaxyProps[] = [];
 
-    // Expanded reddish color palette
-    const redColors: [number, number, number][] = [
-      [1.0, 0.4, 0.3],   // Bright red-orange
-      [1.0, 0.3, 0.35],  // Deep red
-      [0.95, 0.5, 0.4],  // Coral
-      [1.0, 0.35, 0.5],  // Red-magenta
-      [0.9, 0.45, 0.35], // Rust red
-      [1.0, 0.55, 0.45], // Salmon
-      [0.85, 0.3, 0.4],  // Crimson
-      [1.0, 0.6, 0.5],   // Light coral
-      [0.95, 0.4, 0.45], // Rose red
-      [1.0, 0.5, 0.35],  // Tangerine red
-      [0.92, 0.35, 0.3], // Brick red
-      [1.0, 0.45, 0.55], // Pink-red
-      [0.88, 0.4, 0.32], // Terra cotta
-      [1.0, 0.38, 0.42], // Raspberry
-      [0.95, 0.55, 0.5], // Dusty rose
-      [1.0, 0.32, 0.28], // Scarlet
-      [0.9, 0.5, 0.45],  // Warm rose
-      [1.0, 0.42, 0.38], // Vermillion
-      [0.85, 0.38, 0.35], // Maroon light
-      [0.98, 0.48, 0.4],  // Peach red
+    // Expanded color palette - reds, blues, and purples
+    const galaxyColors: [number, number, number][] = [
+      // Reds (12)
+      [1.0, 0.4, 0.3],    // Bright red-orange
+      [1.0, 0.3, 0.35],   // Deep red
+      [0.95, 0.5, 0.4],   // Coral
+      [1.0, 0.35, 0.5],   // Red-magenta
+      [0.9, 0.45, 0.35],  // Rust red
+      [1.0, 0.55, 0.45],  // Salmon
+      [0.85, 0.3, 0.4],   // Crimson
+      [1.0, 0.6, 0.5],    // Light coral
+      [0.95, 0.4, 0.45],  // Rose red
+      [1.0, 0.5, 0.35],   // Tangerine red
+      [0.92, 0.35, 0.3],  // Brick red
+      [1.0, 0.38, 0.42],  // Raspberry
+
+      // Blues (12)
+      [0.3, 0.5, 1.0],    // Bright blue
+      [0.4, 0.6, 0.95],   // Sky blue
+      [0.25, 0.4, 0.9],   // Royal blue
+      [0.5, 0.7, 1.0],    // Light blue
+      [0.35, 0.55, 0.95], // Azure
+      [0.2, 0.45, 0.85],  // Deep blue
+      [0.45, 0.65, 1.0],  // Cerulean
+      [0.3, 0.6, 0.9],    // Steel blue
+      [0.55, 0.75, 1.0],  // Pale blue
+      [0.28, 0.48, 0.92], // Cobalt
+      [0.4, 0.55, 0.88],  // Slate blue
+      [0.5, 0.8, 1.0],    // Ice blue
+
+      // Purples (12)
+      [0.7, 0.3, 0.9],    // Violet
+      [0.6, 0.35, 0.85],  // Purple
+      [0.8, 0.4, 0.95],   // Bright purple
+      [0.55, 0.3, 0.8],   // Deep purple
+      [0.75, 0.45, 0.9],  // Orchid
+      [0.5, 0.35, 0.75],  // Plum
+      [0.65, 0.4, 0.88],  // Amethyst
+      [0.85, 0.5, 1.0],   // Lavender bright
+      [0.6, 0.3, 0.7],    // Grape
+      [0.7, 0.4, 0.85],   // Heather
+      [0.55, 0.45, 0.9],  // Periwinkle
+      [0.8, 0.35, 0.8],   // Magenta-purple
     ];
 
     // Minimum distance between galaxies
@@ -3775,13 +3796,13 @@ function DistantGalaxies() {
       const rotZ = rand() * Math.PI * 2;
 
       // Pick color from palette
-      const colorIndex = Math.floor(rand() * redColors.length);
+      const colorIndex = Math.floor(rand() * galaxyColors.length);
 
       result.push({
         position,
         scale,
         rotation: [rotX, rotY, rotZ],
-        colorTint: redColors[colorIndex],
+        colorTint: galaxyColors[colorIndex],
         seed: result.length * 23 + 7,
       });
     }
