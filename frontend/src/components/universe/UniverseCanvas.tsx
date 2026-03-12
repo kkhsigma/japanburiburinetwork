@@ -1933,7 +1933,7 @@ function FloatingBook({ onSelect }: { onSelect: (id: string) => void }) {
     }
   });
 
-  const handlePointerOver = (e: THREE.Event) => {
+  const handlePointerOver = (e: THREE.Event & { stopPropagation: () => void }) => {
     e.stopPropagation();
     if (!hovered) hoverStartTime.current = performance.now() / 1000;
     setHovered(true);
