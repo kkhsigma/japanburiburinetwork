@@ -6,13 +6,13 @@ import { motion } from "framer-motion";
 import { Search, X, Sun, Moon } from "lucide-react";
 
 const navItems = [
-  { label: "Monitor", href: "/universe", active: true },
-  { label: "Cannabis", href: "/cannabis" },
-  { label: "Psychedelics", href: "/psychedelics" },
-  { label: "Others", href: "/explore" },
-  { label: "Alerts", href: "/alerts" },
-  { label: "Watchlist", href: "/watchlist" },
-  { label: "Blog", href: "/blog" },
+  { label: "モニター", href: "/universe", active: true },
+  { label: "カンナビノイド", href: "/cannabis" },
+  { label: "サイケデリクス", href: "/psychedelics" },
+  { label: "比較", href: "/explore" },
+  { label: "アラート", href: "/alerts" },
+  { label: "ウォッチリスト", href: "/watchlist" },
+  { label: "ブログ", href: "/blog" },
 ];
 
 interface NavBarProps {
@@ -62,14 +62,14 @@ export function NavBar({ theme, onToggleTheme }: NavBarProps) {
             JBN
           </span>
           <span
-            className="text-[10px] tracking-[0.15em] uppercase transition-colors duration-500 hidden sm:block"
+            className="text-[10px] tracking-[0.15em] transition-colors duration-500 hidden sm:block"
             style={{
               fontFamily: "var(--font-space-grotesk), sans-serif",
               color: isDark ? "rgba(26,154,138,0.5)" : "rgba(0,0,0,0.3)",
               fontWeight: 500,
             }}
           >
-            Monitor
+            モニター
           </span>
         </Link>
 
@@ -142,7 +142,7 @@ export function NavBar({ theme, onToggleTheme }: NavBarProps) {
                 <input
                   autoFocus
                   type="text"
-                  placeholder="Search compounds..."
+                  placeholder="成分を検索..."
                   className="bg-transparent text-[12px] placeholder-gray-500 outline-none w-full"
                   style={{
                     fontFamily: "var(--font-space-grotesk), sans-serif",
@@ -176,7 +176,7 @@ export function NavBar({ theme, onToggleTheme }: NavBarProps) {
               backgroundColor: isDark ? "rgba(255, 200, 60, 0.08)" : "rgba(100, 128, 200, 0.08)",
               border: isDark ? "1px solid rgba(255, 200, 60, 0.15)" : "1px solid rgba(100, 128, 200, 0.15)",
             }}
-            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={isDark ? "ライトモードに切替" : "ダークモードに切替"}
           >
             {isDark ? <Sun size={14} /> : <Moon size={14} />}
           </button>
@@ -201,7 +201,7 @@ export function NavBar({ theme, onToggleTheme }: NavBarProps) {
                 fontWeight: 500,
               }}
             >
-              Live
+              稼働中
             </span>
           </div>
         </div>
