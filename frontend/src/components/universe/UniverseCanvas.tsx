@@ -31,6 +31,21 @@ const QualityContext = createContext<QualityContextType>({
   deviceInfo: { cores: 4, memory: null, gpu: "unknown", isMobile: false, isHighEnd: false },
 });
 
+// ─── Auto-Rotate Context ────────────────────────────────
+interface AutoRotateContextType {
+  autoRotate: boolean;
+  setAutoRotate: (value: boolean) => void;
+}
+
+const AutoRotateContext = createContext<AutoRotateContextType>({
+  autoRotate: true,
+  setAutoRotate: () => {},
+});
+
+function useAutoRotate() {
+  return useContext(AutoRotateContext);
+}
+
 // Hook to detect device capabilities
 function useDeviceCapabilities() {
   const [deviceInfo, setDeviceInfo] = useState({
@@ -510,347 +525,294 @@ function buildNovaParticles(count: number, minSpd: number, maxSpd: number) {
   return { geo, vels };
 }
 
-// ─── Category Nebula Configuration ──────────────────────
+// ─── Orbital Satellites Configuration ───────────────────
 
-interface NebulaConfig {
+interface SatelliteConfig {
   id: string;
-  position: [number, number, number];
+  planetPosition: [number, number, number];
+  planetRadius: number;
   color: string;
   families: Set<string>;
+  hasRings?: boolean;
 }
 
-const NEBULA_CONFIGS: NebulaConfig[] = [
+const SATELLITE_CONFIGS: SatelliteConfig[] = [
   {
     id: "cannabis",
-    position: [-7.5, 2.5, 2],
+    planetPosition: [-9, 0.5, 3],
+    planetRadius: 1.4,
     color: "#d4a72d",
     families: CANNABIS_FAMILIES,
   },
   {
     id: "psychedelics",
-    position: [6, 4.3, -4],
+    planetPosition: [7, 2.8, -5],
+    planetRadius: 1.3,
     color: "#a855f7",
     families: PSYCHEDELIC_FAMILIES,
-  },
-  {
-    id: "others",
-    position: [6.5, -0.2, 0.5],
-    color: "#22d3ee",
-    families: new Set(
-      mockCompounds
-        .map((c) => c.chemical_family ?? "Other")
-        .filter((f) => !CANNABIS_FAMILIES.has(f) && !PSYCHEDELIC_FAMILIES.has(f))
-    ),
+    hasRings: true,
   },
 ];
 
-// Get compounds for a nebula category
-function getNebulaCompounds(nebulaId: string): typeof mockCompounds {
-  const config = NEBULA_CONFIGS.find((n) => n.id === nebulaId);
+// Get compounds for a satellite group
+function getSatelliteCompounds(configId: string): typeof mockCompounds {
+  const config = SATELLITE_CONFIGS.find((c) => c.id === configId);
   if (!config) return [];
   return mockCompounds.filter((c) => config.families.has(c.chemical_family ?? "Other"));
 }
 
-// ─── Compound Star Shaders ──────────────────────────────
+// ─── Satellite Helper Functions ─────────────────────────
 
-const COMPOUND_STAR_VERT = /* glsl */ `
-  attribute float aSize;
-  attribute float aBrightness;
-  attribute float aPhase;
-  uniform float uTime;
-  uniform float uScale;
-  varying float vBrightness;
-  varying float vPhase;
-
-  void main() {
-    vBrightness = aBrightness;
-    vPhase = aPhase;
-
-    // Twinkling size variation
-    float twinkle = 1.0 + sin(uTime * 3.0 + aPhase * 6.28) * 0.15;
-
-    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = aSize * uScale * twinkle * (200.0 / -mvPos.z);
-    gl_Position = projectionMatrix * mvPos;
+function getRiskColor(risk: string): string {
+  switch (risk) {
+    case "illegal": return "#ef4444";
+    case "high": return "#f97316";
+    case "medium": return "#eab308";
+    case "low": return "#22c55e";
+    case "safe": return "#22d3ee";
+    default: return "#888888";
   }
-`;
-
-const COMPOUND_STAR_FRAG = /* glsl */ `
-  uniform vec3 uColor;
-  uniform float uTime;
-  uniform bool uHighQuality;
-  varying float vBrightness;
-  varying float vPhase;
-
-  void main() {
-    vec2 uv = gl_PointCoord - vec2(0.5);
-    float d = length(uv);
-
-    if (d > 0.5) discard;
-
-    // Sharp bright core
-    float core = smoothstep(0.12, 0.0, d);
-
-    // Soft glow falloff
-    float glow = smoothstep(0.5, 0.05, d);
-
-    // Twinkle animation
-    float twinkle = 0.85 + sin(uTime * 4.0 + vPhase * 6.28) * 0.15;
-
-    // Diffraction spikes (high quality only)
-    float spikes = 0.0;
-    if (uHighQuality) {
-      float angle = atan(uv.y, uv.x);
-      float spike4 = pow(abs(cos(angle * 2.0)), 16.0) * smoothstep(0.5, 0.1, d);
-      float spike6 = pow(abs(cos(angle * 3.0)), 24.0) * smoothstep(0.4, 0.08, d);
-      spikes = (spike4 * 0.3 + spike6 * 0.2) * vBrightness;
-    }
-
-    // Combine layers
-    float intensity = (core * 0.7 + glow * 0.3 + spikes) * twinkle * vBrightness;
-
-    // Color with hot white core
-    vec3 col = mix(uColor, vec3(1.0), core * 0.6);
-
-    gl_FragColor = vec4(col, intensity);
-  }
-`;
-
-// ─── Nebula Cloud Component ─────────────────────────────
-
-function NebulaCloud({
-  position,
-  color,
-}: {
-  position: [number, number, number];
-  color: string;
-}) {
-  const { effectiveQuality } = useQuality();
-  const groupRef = useRef<THREE.Group>(null);
-  const glowMap = useMemo(() => makeGlowMap(), []);
-
-  // Quality-scaled particle count
-  const cloudCount = effectiveQuality === "high" ? 12 : 6;
-
-  // Generate cloud sprite positions and properties
-  const clouds = useMemo(() => {
-    const items: Array<{
-      offset: [number, number, number];
-      scale: number;
-      opacity: number;
-      rotSpeed: number;
-    }> = [];
-
-    for (let i = 0; i < cloudCount; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(Math.random() * 2 - 1);
-      const r = 0.8 + Math.random() * 1.2;
-
-      items.push({
-        offset: [
-          Math.sin(phi) * Math.cos(theta) * r,
-          Math.sin(phi) * Math.sin(theta) * r * 0.6,
-          Math.cos(phi) * r,
-        ],
-        scale: 1.5 + Math.random() * 2.0,
-        opacity: 0.02 + Math.random() * 0.02,
-        rotSpeed: (Math.random() - 0.5) * 0.1,
-      });
-    }
-    return items;
-  }, [cloudCount]);
-
-  useFrame(({ clock }) => {
-    if (groupRef.current) {
-      groupRef.current.rotation.y = clock.getElapsedTime() * 0.02;
-    }
-  });
-
-  const nebulaColor = useMemo(() => new THREE.Color(color), [color]);
-
-  return (
-    <group ref={groupRef} position={position}>
-      {clouds.map((cloud, i) => (
-        <sprite
-          key={i}
-          position={cloud.offset}
-          scale={[cloud.scale, cloud.scale, 1]}
-        >
-          <spriteMaterial
-            map={glowMap}
-            color={nebulaColor}
-            transparent
-            opacity={cloud.opacity}
-            toneMapped={false}
-            depthWrite={false}
-            blending={THREE.AdditiveBlending}
-          />
-        </sprite>
-      ))}
-    </group>
-  );
 }
 
-// ─── Compound Stars Component ───────────────────────────
+function getRiskSize(risk: string): number {
+  switch (risk) {
+    case "illegal": return 0.12;
+    case "high": return 0.10;
+    case "medium": return 0.08;
+    case "low": return 0.07;
+    case "safe": return 0.06;
+    default: return 0.07;
+  }
+}
 
-function CompoundStars({
-  nebulaId,
-  position,
+function getRiskLabel(risk: string): string {
+  switch (risk) {
+    case "illegal": return "違法";
+    case "high": return "高リスク";
+    case "medium": return "中リスク";
+    case "low": return "低リスク";
+    case "safe": return "安全";
+    default: return "不明";
+  }
+}
+
+// ─── Satellite Texture Generator ────────────────────────
+
+function generateSatelliteTexture(seed: number, baseColor: THREE.Color, accentColor: THREE.Color): THREE.CanvasTexture {
+  const W = 64, H = 32;
+  const cvs = document.createElement("canvas");
+  cvs.width = W;
+  cvs.height = H;
+  const ctx = cvs.getContext("2d")!;
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
+
+  // Use seed to create unique but stable noise
+  const seedOffset = seed * 127.3;
+
+  for (let py = 0; py < H; py++) {
+    for (let px = 0; px < W; px++) {
+      const u = px / W;
+      const v = py / H;
+      const theta = u * Math.PI * 2;
+      const phi = v * Math.PI;
+      const sx = Math.sin(phi) * Math.cos(theta);
+      const sy = Math.cos(phi);
+      const sz = Math.sin(phi) * Math.sin(theta);
+
+      // Rocky surface noise
+      const rock = fbm3d(sx * 6 + seedOffset, sy * 6, sz * 6, 3);
+      // Crater-like features
+      const craters = fbm3d(sx * 12 + seedOffset + 50, sy * 12 + 30, sz * 12, 2);
+      // Fine detail
+      const detail = fbm3d(sx * 20 + seedOffset + 100, sy * 20, sz * 20, 2);
+
+      // Mix base and accent colors based on noise
+      const t = rock * 0.6 + craters * 0.3 + detail * 0.1;
+
+      let cr = baseColor.r * 255 * (0.6 + t * 0.5);
+      let cg = baseColor.g * 255 * (0.6 + t * 0.5);
+      let cb = baseColor.b * 255 * (0.6 + t * 0.5);
+
+      // Add accent color highlights
+      if (rock > 0.5) {
+        const highlight = (rock - 0.5) * 2;
+        cr = cr * (1 - highlight * 0.4) + accentColor.r * 255 * highlight * 0.4;
+        cg = cg * (1 - highlight * 0.4) + accentColor.g * 255 * highlight * 0.4;
+        cb = cb * (1 - highlight * 0.4) + accentColor.b * 255 * highlight * 0.4;
+      }
+
+      // Dark crater shadows
+      if (craters < 0.3) {
+        const shadow = 1 - (0.3 - craters) * 2;
+        cr *= shadow;
+        cg *= shadow;
+        cb *= shadow;
+      }
+
+      // Specular highlights on ridges
+      if (detail > 0.6 && rock > 0.4) {
+        const spec = (detail - 0.6) * 3;
+        cr = Math.min(cr + spec * 60, 255);
+        cg = Math.min(cg + spec * 55, 255);
+        cb = Math.min(cb + spec * 50, 255);
+      }
+
+      const idx = (py * W + px) * 4;
+      d[idx] = Math.min(255, Math.max(0, cr));
+      d[idx + 1] = Math.min(255, Math.max(0, cg));
+      d[idx + 2] = Math.min(255, Math.max(0, cb));
+      d[idx + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cvs);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// ─── Single Orbiting Satellite ──────────────────────────
+
+interface SatelliteOrbitData {
+  radius: number;
+  angle: number;
+  tilt: number;
+  speed: number;
+  yOffset: number;
+}
+
+function OrbitingSatellite({
+  compound,
+  orbit,
+  planetPosition,
   color,
   onHover,
   onLeave,
   onClick,
 }: {
-  nebulaId: string;
-  position: [number, number, number];
+  compound: typeof mockCompounds[0];
+  orbit: SatelliteOrbitData;
+  planetPosition: [number, number, number];
   color: string;
   onHover: (compound: typeof mockCompounds[0], worldPos: THREE.Vector3) => void;
   onLeave: () => void;
   onClick: (compoundId: string) => void;
 }) {
-  const { effectiveQuality } = useQuality();
-  const pointsRef = useRef<THREE.Points>(null);
-  const compounds = useMemo(() => getNebulaCompounds(nebulaId), [nebulaId]);
+  const meshRef = useRef<THREE.Mesh>(null);
+  const glowRef = useRef<THREE.Sprite>(null);
+  const groupRef = useRef<THREE.Group>(null);
+  const glowMap = useMemo(() => makeGlowMap(), []);
 
-  // Risk level to size mapping
-  const riskToSize = useCallback((risk: string): number => {
-    switch (risk) {
-      case "illegal": return 0.22;
-      case "high": return 0.18;
-      case "medium": return 0.14;
-      case "low": return 0.10;
-      case "safe": return 0.08;
-      default: return 0.12;
-    }
-  }, []);
+  const size = getRiskSize(compound.risk_level);
+  const riskColor = useMemo(() => new THREE.Color(getRiskColor(compound.risk_level)), [compound.risk_level]);
+  const baseColor = useMemo(() => new THREE.Color(color), [color]);
 
-  // Risk level to brightness mapping
-  const riskToBrightness = useCallback((risk: string): number => {
-    switch (risk) {
-      case "illegal": return 1.0;
-      case "high": return 0.85;
-      case "medium": return 0.7;
-      case "low": return 0.55;
-      case "safe": return 0.45;
-      default: return 0.6;
-    }
-  }, []);
+  // Generate unique procedural texture for this satellite
+  const texture = useMemo(() => {
+    const seed = parseInt(compound.id, 10) || compound.name.charCodeAt(0);
+    return generateSatelliteTexture(seed, baseColor, riskColor);
+  }, [compound.id, compound.name, baseColor, riskColor]);
 
-  // Build star geometry
-  const { geometry, starPositions } = useMemo(() => {
-    const count = compounds.length;
-    const positions = new Float32Array(count * 3);
-    const sizes = new Float32Array(count);
-    const brightnesses = new Float32Array(count);
-    const phases = new Float32Array(count);
-    const posArray: THREE.Vector3[] = [];
-
-    // Distribute stars in a spherical cluster
-    for (let i = 0; i < count; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(Math.random() * 2 - 1);
-      const r = 0.5 + Math.random() * 1.5;
-
-      const x = Math.sin(phi) * Math.cos(theta) * r;
-      const y = Math.sin(phi) * Math.sin(theta) * r * 0.7;
-      const z = Math.cos(phi) * r;
-
-      positions[i * 3] = x;
-      positions[i * 3 + 1] = y;
-      positions[i * 3 + 2] = z;
-
-      posArray.push(new THREE.Vector3(x, y, z));
-
-      const compound = compounds[i];
-      sizes[i] = riskToSize(compound.risk_level);
-      brightnesses[i] = riskToBrightness(compound.risk_level);
-      phases[i] = Math.random();
-    }
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    geo.setAttribute("aSize", new THREE.Float32BufferAttribute(sizes, 1));
-    geo.setAttribute("aBrightness", new THREE.Float32BufferAttribute(brightnesses, 1));
-    geo.setAttribute("aPhase", new THREE.Float32BufferAttribute(phases, 1));
-
-    return { geometry: geo, starPositions: posArray };
-  }, [compounds, riskToSize, riskToBrightness]);
-
-  // Shader uniforms
-  const uniforms = useMemo(
-    () => ({
-      uColor: { value: new THREE.Color(color) },
-      uTime: { value: 0 },
-      uScale: { value: 1.0 },
-      uHighQuality: { value: effectiveQuality === "high" },
-    }),
-    [color, effectiveQuality]
-  );
-
-  useFrame(({ clock }) => {
-    uniforms.uTime.value = clock.getElapsedTime();
-  });
-
-  // Invisible hit spheres for interaction
+  // Larger hit area for mobile
   const isMobile = useMemo(() => {
     if (typeof window === "undefined") return false;
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
       window.innerWidth < 768;
   }, []);
+  const hitRadius = isMobile ? size * 4 : size * 2.5;
 
-  const hitSphereScale = isMobile ? 0.5 : 0.35;
+  useFrame(({ clock }) => {
+    if (!groupRef.current) return;
+    const t = clock.getElapsedTime();
+
+    // Orbital motion
+    const currentAngle = orbit.angle + t * orbit.speed;
+    const x = Math.cos(currentAngle) * orbit.radius;
+    const z = Math.sin(currentAngle) * orbit.radius;
+    const y = orbit.yOffset + Math.sin(currentAngle * 0.5 + orbit.tilt) * 0.15;
+
+    groupRef.current.position.set(x, y, z);
+
+    // Satellite self-rotation (tumbling)
+    if (meshRef.current) {
+      meshRef.current.rotation.x = t * 0.3 + orbit.angle;
+      meshRef.current.rotation.y = t * 0.5 + orbit.tilt;
+    }
+
+    // Gentle pulse on glow
+    if (glowRef.current) {
+      const pulse = 1 + Math.sin(t * 2 + orbit.angle) * 0.1;
+      glowRef.current.scale.setScalar(size * 4 * pulse);
+    }
+  });
+
+  const handlePointerOver = useCallback((e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    document.body.style.cursor = "pointer";
+    if (groupRef.current) {
+      const worldPos = new THREE.Vector3();
+      groupRef.current.getWorldPosition(worldPos);
+      onHover(compound, worldPos);
+    }
+  }, [compound, onHover]);
+
+  const handlePointerOut = useCallback((e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    document.body.style.cursor = "default";
+    onLeave();
+  }, [onLeave]);
+
+  const handleClick = useCallback((e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    onClick(compound.id);
+  }, [compound.id, onClick]);
 
   return (
-    <group position={position}>
-      {/* Star points */}
-      <points ref={pointsRef} geometry={geometry}>
-        <shaderMaterial
-          transparent
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-          uniforms={uniforms}
-          vertexShader={COMPOUND_STAR_VERT}
-          fragmentShader={COMPOUND_STAR_FRAG}
-        />
-      </points>
+    <group position={planetPosition}>
+      <group ref={groupRef}>
+        {/* Glow sprite */}
+        <sprite ref={glowRef} scale={[size * 4, size * 4, 1]}>
+          <spriteMaterial
+            map={glowMap}
+            color={riskColor}
+            transparent
+            opacity={0.6}
+            toneMapped={false}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </sprite>
 
-      {/* Invisible hit spheres */}
-      {compounds.map((compound, i) => (
+        {/* Solid satellite sphere with procedural texture */}
+        <mesh ref={meshRef}>
+          <sphereGeometry args={[size, 24, 16]} />
+          <meshStandardMaterial
+            map={texture}
+            emissive={riskColor}
+            emissiveIntensity={0.3}
+            roughness={0.7}
+            metalness={0.1}
+            bumpScale={0.02}
+          />
+        </mesh>
+
+        {/* Invisible hit sphere */}
         <mesh
-          key={compound.id}
-          position={starPositions[i]}
-          onPointerOver={(e) => {
-            e.stopPropagation();
-            document.body.style.cursor = "pointer";
-            // Calculate world position
-            const worldPos = new THREE.Vector3();
-            worldPos.copy(starPositions[i]);
-            worldPos.x += position[0];
-            worldPos.y += position[1];
-            worldPos.z += position[2];
-            onHover(compound, worldPos);
-          }}
-          onPointerOut={(e) => {
-            e.stopPropagation();
-            document.body.style.cursor = "default";
-            onLeave();
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onClick(compound.id);
-          }}
+          onPointerOver={handlePointerOver}
+          onPointerOut={handlePointerOut}
+          onClick={handleClick}
         >
-          <sphereGeometry args={[hitSphereScale, 8, 8]} />
+          <sphereGeometry args={[hitRadius, 8, 8]} />
           <meshBasicMaterial transparent opacity={0} />
         </mesh>
-      ))}
+      </group>
     </group>
   );
 }
 
-// ─── Star Tooltip Component ─────────────────────────────
+// ─── Satellite Tooltip Component ────────────────────────
 
-function StarTooltip({
+function SatelliteTooltip({
   compound,
   worldPos,
 }: {
@@ -859,31 +821,11 @@ function StarTooltip({
 }) {
   if (!compound || !worldPos) return null;
 
-  const getRiskColor = (risk: string) => {
-    switch (risk) {
-      case "illegal": return "#ef4444";
-      case "high": return "#f97316";
-      case "medium": return "#eab308";
-      case "low": return "#22c55e";
-      case "safe": return "#22d3ee";
-      default: return "#888";
-    }
-  };
-
-  const getRiskLabel = (risk: string) => {
-    switch (risk) {
-      case "illegal": return "違法";
-      case "high": return "高リスク";
-      case "medium": return "中リスク";
-      case "low": return "低リスク";
-      case "safe": return "安全";
-      default: return "不明";
-    }
-  };
+  const riskColor = getRiskColor(compound.risk_level);
 
   return (
     <Html
-      position={[worldPos.x, worldPos.y + 0.6, worldPos.z]}
+      position={[worldPos.x, worldPos.y + 0.4, worldPos.z]}
       center
       style={{ pointerEvents: "none", whiteSpace: "nowrap" }}
     >
@@ -892,8 +834,8 @@ function StarTooltip({
           padding: "8px 12px",
           borderRadius: "8px",
           backgroundColor: "rgba(6,9,15,0.95)",
-          border: `1px solid ${getRiskColor(compound.risk_level)}40`,
-          boxShadow: `0 4px 20px rgba(0,0,0,0.6), 0 0 15px ${getRiskColor(compound.risk_level)}20`,
+          border: `1px solid ${riskColor}40`,
+          boxShadow: `0 4px 20px rgba(0,0,0,0.6), 0 0 15px ${riskColor}20`,
           backdropFilter: "blur(8px)",
         }}
       >
@@ -914,13 +856,13 @@ function StarTooltip({
             width: "6px",
             height: "6px",
             borderRadius: "50%",
-            backgroundColor: getRiskColor(compound.risk_level),
-            boxShadow: `0 0 6px ${getRiskColor(compound.risk_level)}80`,
+            backgroundColor: riskColor,
+            boxShadow: `0 0 6px ${riskColor}80`,
           }} />
           <span style={{
             fontSize: "9px",
             fontFamily: "ui-monospace, monospace",
-            color: getRiskColor(compound.risk_level),
+            color: riskColor,
           }}>
             {getRiskLabel(compound.risk_level)}
           </span>
@@ -938,17 +880,44 @@ function StarTooltip({
   );
 }
 
-// ─── Category Nebula Container ──────────────────────────
+// ─── Orbital Satellites Container ───────────────────────
 
-function CategoryNebula({
+function OrbitalSatellites({
   config,
   onNavigate,
 }: {
-  config: NebulaConfig;
+  config: SatelliteConfig;
   onNavigate: (compoundId: string) => void;
 }) {
   const [hoveredCompound, setHoveredCompound] = useState<typeof mockCompounds[0] | null>(null);
   const [tooltipPos, setTooltipPos] = useState<THREE.Vector3 | null>(null);
+
+  const compounds = useMemo(() => getSatelliteCompounds(config.id), [config.id]);
+
+  // Generate stable orbital data for each compound
+  const orbits = useMemo(() => {
+    const orbitData: SatelliteOrbitData[] = [];
+    const count = compounds.length;
+
+    // For planets with rings, start orbits outside the ring (rings extend to 2.4 * radius)
+    const minOrbitMultiplier = config.hasRings ? 2.6 : 1.8;
+
+    for (let i = 0; i < count; i++) {
+      // Distribute in multiple orbital rings
+      const ring = Math.floor(i / 4); // 4 satellites per ring
+      const indexInRing = i % 4;
+      const baseRadius = config.planetRadius * minOrbitMultiplier + ring * 0.5;
+
+      orbitData.push({
+        radius: baseRadius + (Math.random() - 0.5) * 0.3,
+        angle: (indexInRing / 4) * Math.PI * 2 + ring * 0.4,
+        tilt: (Math.random() - 0.5) * 0.8,
+        speed: 0.15 + Math.random() * 0.2 - ring * 0.03,
+        yOffset: (Math.random() - 0.5) * 0.6,
+      });
+    }
+    return orbitData;
+  }, [compounds.length, config.planetRadius, config.hasRings]);
 
   const handleHover = useCallback((compound: typeof mockCompounds[0], worldPos: THREE.Vector3) => {
     setHoveredCompound(compound);
@@ -966,19 +935,19 @@ function CategoryNebula({
 
   return (
     <>
-      <NebulaCloud
-        position={config.position}
-        color={config.color}
-      />
-      <CompoundStars
-        nebulaId={config.id}
-        position={config.position}
-        color={config.color}
-        onHover={handleHover}
-        onLeave={handleLeave}
-        onClick={handleClick}
-      />
-      <StarTooltip compound={hoveredCompound} worldPos={tooltipPos} />
+      {compounds.map((compound, i) => (
+        <OrbitingSatellite
+          key={compound.id}
+          compound={compound}
+          orbit={orbits[i]}
+          planetPosition={config.planetPosition}
+          color={config.color}
+          onHover={handleHover}
+          onLeave={handleLeave}
+          onClick={handleClick}
+        />
+      ))}
+      <SatelliteTooltip compound={hoveredCompound} worldPos={tooltipPos} />
     </>
   );
 }
@@ -5282,6 +5251,7 @@ interface MomentumOrbitControlsProps {
 
 function MomentumOrbitControls({ enabled, travelTarget }: MomentumOrbitControlsProps) {
   const { camera } = useThree();
+  const { autoRotate } = useAutoRotate();
   const controlsRef = useRef<React.ElementRef<typeof OrbitControls>>(null);
   const isDragging = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
@@ -5305,9 +5275,19 @@ function MomentumOrbitControls({ enabled, travelTarget }: MomentumOrbitControlsP
     const speed = Math.sqrt(velocity.current.x ** 2 + velocity.current.y ** 2);
 
     if (speed < minSpeed) {
-      // Momentum died down - restore gentle auto-spin
-      velocity.current.x = defaultSpin;
+      // Momentum died down - restore gentle auto-spin only if enabled
+      if (autoRotate) {
+        velocity.current.x = defaultSpin;
+      } else {
+        velocity.current.x = 0;
+      }
       velocity.current.y = 0;
+    }
+
+    // Skip rotation updates if auto-rotate is off and no momentum
+    if (!autoRotate && speed < minSpeed) {
+      controlsRef.current.update();
+      return;
     }
 
     // Apply angular velocity
@@ -5322,7 +5302,8 @@ function MomentumOrbitControls({ enabled, travelTarget }: MomentumOrbitControlsP
     camera.lookAt(0, 0, 0);
 
     // Apply friction to slow down (only for velocities above default)
-    if (speed > defaultSpin * 1.5) {
+    const targetSpeed = autoRotate ? defaultSpin : 0;
+    if (speed > targetSpeed * 1.5) {
       velocity.current.x *= friction;
       velocity.current.y *= friction;
     }
@@ -5681,9 +5662,9 @@ function Scene({ skipIntro = false }: { theme?: "dark" | "light"; skipIntro?: bo
         );
       })}
 
-      {/* Category Nebulae — compound star clusters near each planet */}
-      {NEBULA_CONFIGS.map((config) => (
-        <CategoryNebula
+      {/* Orbiting Satellites — compounds as small moons around planets */}
+      {SATELLITE_CONFIGS.map((config) => (
+        <OrbitalSatellites
           key={config.id}
           config={config}
           onNavigate={handleCompoundClick}
@@ -5914,6 +5895,97 @@ function QualityToggle() {
   );
 }
 
+// ─── Auto-Rotate Toggle Button ──────────────────────────
+
+function AutoRotateToggle() {
+  const { autoRotate, setAutoRotate } = useAutoRotate();
+  const [isVisible, setIsVisible] = useState(true);
+  const [hasAnimatedIn, setHasAnimatedIn] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isPressed, setIsPressed] = useState(false);
+
+  // Trigger entrance animation after mount
+  useEffect(() => {
+    const timer = setTimeout(() => setHasAnimatedIn(true), 1700);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Hide when scrolled past the universe section
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY;
+      setIsVisible(scrollY < 50);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const toggleAutoRotate = useCallback(() => {
+    setAutoRotate(!autoRotate);
+  }, [autoRotate, setAutoRotate]);
+
+  // Calculate button scale for hover/press effects
+  const buttonScale = isPressed ? 0.95 : isHovered ? 1.05 : 1;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 56,
+        right: 140,
+        zIndex: 9999,
+        opacity: hasAnimatedIn && isVisible ? 1 : 0,
+        transform: hasAnimatedIn && isVisible ? "translateY(0) scale(1)" : "translateY(20px) scale(0.9)",
+        transition: "opacity 0.4s ease-out, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
+        pointerEvents: hasAnimatedIn && isVisible ? "auto" : "none",
+      }}
+    >
+      <button
+        onClick={toggleAutoRotate}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => { setIsHovered(false); setIsPressed(false); }}
+        onMouseDown={() => setIsPressed(true)}
+        onMouseUp={() => setIsPressed(false)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 14px",
+          borderRadius: 10,
+          border: autoRotate
+            ? "1px solid rgba(168,85,247,0.3)"
+            : "1px solid rgba(255,255,255,0.15)",
+          background: autoRotate
+            ? "linear-gradient(135deg, rgba(168,85,247,0.2), rgba(168,85,247,0.08))"
+            : "rgba(25,25,25,0.85)",
+          color: autoRotate ? "#a855f7" : "#999",
+          fontSize: 12,
+          fontWeight: 500,
+          fontFamily: "var(--font-space-grotesk), sans-serif",
+          cursor: "pointer",
+          backdropFilter: "blur(10px)",
+          transition: "all 0.2s ease, transform 0.15s ease",
+          transform: `scale(${buttonScale})`,
+          boxShadow: autoRotate
+            ? "0 2px 12px rgba(168,85,247,0.25)"
+            : "0 2px 12px rgba(0,0,0,0.4)",
+        }}
+      >
+        <span style={{
+          fontSize: 14,
+          transition: "transform 0.3s ease",
+          transform: autoRotate ? "rotate(360deg)" : "rotate(0deg)",
+        }}>
+          {autoRotate ? "↻" : "◯"}
+        </span>
+        <span>{autoRotate ? "回転を停止する" : "回転を再開する"}</span>
+      </button>
+    </div>
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────
 
 function UniverseCanvasInner({
@@ -5954,18 +6026,22 @@ export function UniverseCanvas({
   skipIntro?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [autoRotate, setAutoRotate] = useState(true);
 
   return (
     <QualityProvider>
-      <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100vh", background: "#020202" }}>
-        <UniverseCanvasInner
-          theme={theme}
-          sunPosRef={sunPosRef}
-          skipIntro={skipIntro}
-          containerRef={containerRef}
-        />
-      </div>
-      <QualityToggle />
+      <AutoRotateContext.Provider value={{ autoRotate, setAutoRotate }}>
+        <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100vh", background: "#020202" }}>
+          <UniverseCanvasInner
+            theme={theme}
+            sunPosRef={sunPosRef}
+            skipIntro={skipIntro}
+            containerRef={containerRef}
+          />
+        </div>
+        <AutoRotateToggle />
+        <QualityToggle />
+      </AutoRotateContext.Provider>
     </QualityProvider>
   );
 }
