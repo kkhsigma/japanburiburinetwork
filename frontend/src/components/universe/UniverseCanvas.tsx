@@ -46,6 +46,21 @@ function useAutoRotate() {
   return useContext(AutoRotateContext);
 }
 
+// ─── Explore Mode Context ───────────────────────────────
+interface ExploreModeContextType {
+  exploreMode: boolean;
+  setExploreMode: (value: boolean) => void;
+}
+
+const ExploreModeContext = createContext<ExploreModeContextType>({
+  exploreMode: false,
+  setExploreMode: () => {},
+});
+
+function useExploreMode() {
+  return useContext(ExploreModeContext);
+}
+
 // Hook to detect device capabilities
 function useDeviceCapabilities() {
   const [deviceInfo, setDeviceInfo] = useState({
@@ -599,7 +614,7 @@ function getRiskLabel(risk: string): string {
 // ─── Satellite Texture Generator ────────────────────────
 
 function generateSatelliteTexture(seed: number, baseColor: THREE.Color, accentColor: THREE.Color): THREE.CanvasTexture {
-  const W = 64, H = 32;
+  const W = 256, H = 128;
   const cvs = document.createElement("canvas");
   cvs.width = W;
   cvs.height = H;
@@ -609,6 +624,47 @@ function generateSatelliteTexture(seed: number, baseColor: THREE.Color, accentCo
 
   // Use seed to create unique but stable noise
   const seedOffset = seed * 127.3;
+  const rand = seededRandom(seed);
+
+  // Pre-generate crater positions (in spherical coords)
+  const numCraters = 8 + Math.floor(rand() * 12);
+  const craterData: Array<{
+    theta: number;
+    phi: number;
+    radius: number;
+    depth: number;
+    rimHeight: number;
+  }> = [];
+
+  for (let i = 0; i < numCraters; i++) {
+    craterData.push({
+      theta: rand() * Math.PI * 2,
+      phi: rand() * Math.PI,
+      radius: 0.08 + rand() * 0.2,
+      depth: 0.3 + rand() * 0.5,
+      rimHeight: 0.1 + rand() * 0.2,
+    });
+  }
+
+  // Pre-generate mineral vein paths
+  const numVeins = 2 + Math.floor(rand() * 4);
+  const veinData: Array<{
+    startTheta: number;
+    startPhi: number;
+    angle: number;
+    width: number;
+    brightness: number;
+  }> = [];
+
+  for (let i = 0; i < numVeins; i++) {
+    veinData.push({
+      startTheta: rand() * Math.PI * 2,
+      startPhi: rand() * Math.PI,
+      angle: rand() * Math.PI,
+      width: 0.02 + rand() * 0.04,
+      brightness: 0.3 + rand() * 0.4,
+    });
+  }
 
   for (let py = 0; py < H; py++) {
     for (let px = 0; px < W; px++) {
@@ -620,42 +676,132 @@ function generateSatelliteTexture(seed: number, baseColor: THREE.Color, accentCo
       const sy = Math.cos(phi);
       const sz = Math.sin(phi) * Math.sin(theta);
 
-      // Rocky surface noise
-      const rock = fbm3d(sx * 6 + seedOffset, sy * 6, sz * 6, 3);
-      // Crater-like features
-      const craters = fbm3d(sx * 12 + seedOffset + 50, sy * 12 + 30, sz * 12, 2);
-      // Fine detail
-      const detail = fbm3d(sx * 20 + seedOffset + 100, sy * 20, sz * 20, 2);
+      // === BASE TERRAIN ===
+      // Multi-octave rocky surface
+      const terrain1 = fbm3d(sx * 4 + seedOffset, sy * 4, sz * 4, 4);
+      const terrain2 = fbm3d(sx * 8 + seedOffset + 50, sy * 8 + 30, sz * 8, 3);
+      const terrain3 = fbm3d(sx * 16 + seedOffset + 100, sy * 16, sz * 16, 2);
+      const microDetail = fbm3d(sx * 32 + seedOffset + 200, sy * 32, sz * 32, 2);
 
-      // Mix base and accent colors based on noise
-      const t = rock * 0.6 + craters * 0.3 + detail * 0.1;
+      // Combine terrain layers
+      let elevation = terrain1 * 0.5 + terrain2 * 0.3 + terrain3 * 0.15 + microDetail * 0.05;
 
-      let cr = baseColor.r * 255 * (0.6 + t * 0.5);
-      let cg = baseColor.g * 255 * (0.6 + t * 0.5);
-      let cb = baseColor.b * 255 * (0.6 + t * 0.5);
+      // === CRATERS ===
+      let craterEffect = 0;
+      let inCraterRim = false;
+      let craterShadow = 1.0;
 
-      // Add accent color highlights
-      if (rock > 0.5) {
-        const highlight = (rock - 0.5) * 2;
-        cr = cr * (1 - highlight * 0.4) + accentColor.r * 255 * highlight * 0.4;
-        cg = cg * (1 - highlight * 0.4) + accentColor.g * 255 * highlight * 0.4;
-        cb = cb * (1 - highlight * 0.4) + accentColor.b * 255 * highlight * 0.4;
+      for (const crater of craterData) {
+        // Calculate angular distance to crater center
+        const craterSx = Math.sin(crater.phi) * Math.cos(crater.theta);
+        const craterSy = Math.cos(crater.phi);
+        const craterSz = Math.sin(crater.phi) * Math.sin(crater.theta);
+
+        const dist = Math.sqrt(
+          (sx - craterSx) ** 2 + (sy - craterSy) ** 2 + (sz - craterSz) ** 2
+        );
+
+        const normalizedDist = dist / crater.radius;
+
+        if (normalizedDist < 1.0) {
+          // Inside crater - bowl shape
+          const bowlDepth = Math.pow(1 - normalizedDist, 0.5) * crater.depth;
+          craterEffect -= bowlDepth;
+
+          // Crater floor is darker
+          craterShadow *= 0.5 + normalizedDist * 0.5;
+        } else if (normalizedDist < 1.4) {
+          // Crater rim - raised edge
+          const rimFactor = 1 - (normalizedDist - 1.0) / 0.4;
+          craterEffect += rimFactor * crater.rimHeight;
+          inCraterRim = true;
+        } else if (normalizedDist < 2.5) {
+          // Ejecta rays
+          const rayAngle = Math.atan2(sz - craterSz, sx - craterSx);
+          const rayPattern = Math.pow(Math.abs(Math.sin(rayAngle * 6 + seed)), 4);
+          const rayFade = 1 - (normalizedDist - 1.4) / 1.1;
+          craterEffect += rayPattern * rayFade * 0.08;
+        }
       }
 
-      // Dark crater shadows
-      if (craters < 0.3) {
-        const shadow = 1 - (0.3 - craters) * 2;
-        cr *= shadow;
-        cg *= shadow;
-        cb *= shadow;
+      elevation += craterEffect;
+
+      // === MINERAL VEINS ===
+      let veinBrightness = 0;
+      for (const vein of veinData) {
+        // Sinuous vein path
+        const veinTheta = vein.startTheta + Math.sin(phi * 3 + vein.angle) * 0.5;
+        const veinDist = Math.abs(theta - veinTheta);
+        const wrappedDist = Math.min(veinDist, Math.PI * 2 - veinDist);
+
+        if (wrappedDist < vein.width) {
+          const veinStrength = 1 - wrappedDist / vein.width;
+          // Add noise to vein edges
+          const veinNoise = fbm3d(sx * 40 + seed * 7, sy * 40, sz * 40, 2);
+          if (veinNoise > 0.4) {
+            veinBrightness = Math.max(veinBrightness, veinStrength * vein.brightness);
+          }
+        }
       }
 
-      // Specular highlights on ridges
-      if (detail > 0.6 && rock > 0.4) {
-        const spec = (detail - 0.6) * 3;
-        cr = Math.min(cr + spec * 60, 255);
-        cg = Math.min(cg + spec * 55, 255);
-        cb = Math.min(cb + spec * 50, 255);
+      // === COLOR CALCULATION ===
+      // Base gray rock color with variation
+      const grayBase = 0.35 + terrain1 * 0.25;
+      let cr = grayBase * 255;
+      let cg = grayBase * 255;
+      let cb = grayBase * 255;
+
+      // Tint with base color
+      const colorInfluence = 0.4 + terrain2 * 0.3;
+      cr = cr * (1 - colorInfluence) + baseColor.r * 255 * colorInfluence;
+      cg = cg * (1 - colorInfluence) + baseColor.g * 255 * colorInfluence;
+      cb = cb * (1 - colorInfluence) + baseColor.b * 255 * colorInfluence;
+
+      // Elevation-based shading (highlights on ridges)
+      const shadeFactor = 0.7 + elevation * 0.6;
+      cr *= shadeFactor;
+      cg *= shadeFactor;
+      cb *= shadeFactor;
+
+      // Apply crater shadow
+      cr *= craterShadow;
+      cg *= craterShadow;
+      cb *= craterShadow;
+
+      // Crater rim highlights
+      if (inCraterRim) {
+        cr = Math.min(cr * 1.2 + 20, 255);
+        cg = Math.min(cg * 1.2 + 18, 255);
+        cb = Math.min(cb * 1.2 + 15, 255);
+      }
+
+      // Mineral vein glow (accent color)
+      if (veinBrightness > 0) {
+        cr = cr * (1 - veinBrightness) + accentColor.r * 255 * veinBrightness;
+        cg = cg * (1 - veinBrightness) + accentColor.g * 255 * veinBrightness;
+        cb = cb * (1 - veinBrightness) + accentColor.b * 255 * veinBrightness;
+        // Add glow
+        cr = Math.min(cr + veinBrightness * 40, 255);
+        cg = Math.min(cg + veinBrightness * 35, 255);
+        cb = Math.min(cb + veinBrightness * 30, 255);
+      }
+
+      // Micro-pitting (small dark spots)
+      const pitting = hash(px * 0.5 + seed, py * 0.5);
+      if (pitting > 0.92) {
+        const pitDepth = (pitting - 0.92) * 8;
+        cr *= 1 - pitDepth * 0.4;
+        cg *= 1 - pitDepth * 0.4;
+        cb *= 1 - pitDepth * 0.4;
+      }
+
+      // Bright specular spots (exposed minerals)
+      const specular = hash(px * 0.3 + seed * 2, py * 0.3 + seed);
+      if (specular > 0.96 && elevation > 0.4) {
+        const specIntensity = (specular - 0.96) * 25;
+        cr = Math.min(cr + specIntensity * 80, 255);
+        cg = Math.min(cg + specIntensity * 75, 255);
+        cb = Math.min(cb + specIntensity * 70, 255);
       }
 
       const idx = (py * W + px) * 4;
@@ -5373,6 +5519,167 @@ function MomentumOrbitControls({ enabled, travelTarget }: MomentumOrbitControlsP
   );
 }
 
+// ─── Fly Controls (WASD + Mouse) ────────────────────────
+
+function FlyControls({ enabled }: { enabled: boolean }) {
+  const { camera, gl } = useThree();
+  const keys = useRef<Set<string>>(new Set());
+  const mouseDown = useRef(false);
+  const lastMouse = useRef({ x: 0, y: 0 });
+  const euler = useRef(new THREE.Euler(0, 0, 0, "YXZ"));
+  const velocity = useRef(new THREE.Vector3());
+
+  const moveSpeed = 0.035;
+  const lookSpeed = 0.0012;
+  const dampingFactor = 0.82;
+
+  // Initialize euler from camera
+  useEffect(() => {
+    if (enabled) {
+      euler.current.setFromQuaternion(camera.quaternion);
+    }
+  }, [enabled, camera]);
+
+  // Disable page scroll when explore mode is active
+  useEffect(() => {
+    if (!enabled) return;
+
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [enabled]);
+
+  // Keyboard events
+  useEffect(() => {
+    if (!enabled) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      // Prevent default for movement keys to stop page scroll
+      if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(key)) {
+        e.preventDefault();
+      }
+      keys.current.add(key);
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      keys.current.delete(e.key.toLowerCase());
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      keys.current.clear();
+    };
+  }, [enabled]);
+
+  // Mouse events for look
+  useEffect(() => {
+    if (!enabled) return;
+
+    const canvas = gl.domElement;
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 0 || e.button === 2) {
+        mouseDown.current = true;
+        lastMouse.current = { x: e.clientX, y: e.clientY };
+        canvas.style.cursor = "grabbing";
+      }
+    };
+
+    const onMouseUp = () => {
+      mouseDown.current = false;
+      canvas.style.cursor = "grab";
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!mouseDown.current) return;
+
+      const dx = e.clientX - lastMouse.current.x;
+      const dy = e.clientY - lastMouse.current.y;
+
+      euler.current.y -= dx * lookSpeed;
+      euler.current.x -= dy * lookSpeed;
+
+      // Clamp vertical look
+      euler.current.x = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, euler.current.x));
+
+      lastMouse.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const onContextMenu = (e: Event) => {
+      e.preventDefault();
+    };
+
+    canvas.style.cursor = "grab";
+    canvas.addEventListener("mousedown", onMouseDown);
+    canvas.addEventListener("contextmenu", onContextMenu);
+    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("mousemove", onMouseMove);
+
+    return () => {
+      canvas.style.cursor = "auto";
+      canvas.removeEventListener("mousedown", onMouseDown);
+      canvas.removeEventListener("contextmenu", onContextMenu);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("mousemove", onMouseMove);
+    };
+  }, [enabled, gl]);
+
+  useFrame(() => {
+    if (!enabled) return;
+
+    // Get movement direction from keys
+    const direction = new THREE.Vector3();
+
+    if (keys.current.has("w")) {
+      direction.z -= 1;
+    }
+    if (keys.current.has("s")) {
+      direction.z += 1;
+    }
+    if (keys.current.has("a") || keys.current.has("arrowleft")) {
+      direction.x -= 1;
+    }
+    if (keys.current.has("d") || keys.current.has("arrowright")) {
+      direction.x += 1;
+    }
+    if (keys.current.has(" ") || keys.current.has("arrowup")) {
+      direction.y += 1; // Space or ArrowUp to go up
+    }
+    if (keys.current.has("shift") || keys.current.has("arrowdown")) {
+      direction.y -= 1; // Shift or ArrowDown to go down
+    }
+
+    // Normalize and apply speed
+    if (direction.length() > 0) {
+      direction.normalize().multiplyScalar(moveSpeed);
+    }
+
+    // Transform direction to camera space
+    const cameraDirection = direction.clone();
+    cameraDirection.applyEuler(euler.current);
+
+    // Add to velocity
+    velocity.current.add(cameraDirection);
+
+    // Apply damping
+    velocity.current.multiplyScalar(dampingFactor);
+
+    // Move camera
+    camera.position.add(velocity.current);
+
+    // Apply rotation
+    camera.quaternion.setFromEuler(euler.current);
+  });
+
+  return null;
+}
+
 // ─── Camera Controller ──────────────────────────────────
 
 function CameraController({
@@ -5552,6 +5859,7 @@ function CameraReset() {
 
 function Scene({ skipIntro = false }: { theme?: "dark" | "light"; skipIntro?: boolean }) {
   const [travelTarget, setTravelTarget] = useState<string | null>(null);
+  const { exploreMode } = useExploreMode();
   const handleSelect = (id: string) => {
     if (!travelTarget) setTravelTarget(id);
   };
@@ -5703,9 +6011,11 @@ function Scene({ skipIntro = false }: { theme?: "dark" | "light"; skipIntro?: bo
       )}
 
       <MomentumOrbitControls
-        enabled={!travelTarget}
+        enabled={!travelTarget && !exploreMode}
         travelTarget={travelTarget}
       />
+
+      <FlyControls enabled={exploreMode && !travelTarget} />
 
     </IntroContext.Provider>
   );
@@ -5986,6 +6296,119 @@ function AutoRotateToggle() {
   );
 }
 
+// ─── Explore Mode Toggle Button ─────────────────────────
+
+function ExploreModeToggle() {
+  const { exploreMode, setExploreMode } = useExploreMode();
+  const [isVisible, setIsVisible] = useState(true);
+  const [hasAnimatedIn, setHasAnimatedIn] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isPressed, setIsPressed] = useState(false);
+
+  // Trigger entrance animation after mount
+  useEffect(() => {
+    const timer = setTimeout(() => setHasAnimatedIn(true), 1900);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Hide when scrolled past the universe section
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY;
+      setIsVisible(scrollY < 50);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const toggleExploreMode = useCallback(() => {
+    setExploreMode(!exploreMode);
+  }, [exploreMode, setExploreMode]);
+
+  // Calculate button scale for hover/press effects
+  const buttonScale = isPressed ? 0.95 : isHovered ? 1.05 : 1;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 56,
+        right: 280,
+        zIndex: 9999,
+        opacity: hasAnimatedIn && isVisible ? 1 : 0,
+        transform: hasAnimatedIn && isVisible ? "translateY(0) scale(1)" : "translateY(20px) scale(0.9)",
+        transition: "opacity 0.4s ease-out, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
+        pointerEvents: hasAnimatedIn && isVisible ? "auto" : "none",
+      }}
+    >
+      <button
+        onClick={toggleExploreMode}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => { setIsHovered(false); setIsPressed(false); }}
+        onMouseDown={() => setIsPressed(true)}
+        onMouseUp={() => setIsPressed(false)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 14px",
+          borderRadius: 10,
+          border: exploreMode
+            ? "1px solid rgba(34,197,94,0.4)"
+            : "1px solid rgba(255,255,255,0.15)",
+          background: exploreMode
+            ? "linear-gradient(135deg, rgba(34,197,94,0.25), rgba(34,197,94,0.1))"
+            : "rgba(25,25,25,0.85)",
+          color: exploreMode ? "#22c55e" : "#999",
+          fontSize: 12,
+          fontWeight: 500,
+          fontFamily: "var(--font-space-grotesk), sans-serif",
+          cursor: "pointer",
+          backdropFilter: "blur(10px)",
+          transition: "all 0.2s ease, transform 0.15s ease",
+          transform: `scale(${buttonScale})`,
+          boxShadow: exploreMode
+            ? "0 2px 12px rgba(34,197,94,0.3)"
+            : "0 2px 12px rgba(0,0,0,0.4)",
+        }}
+      >
+        <span style={{ fontSize: 14 }}>
+          {exploreMode ? "🚀" : "🎮"}
+        </span>
+        <span>{exploreMode ? "探索中 (WASD)" : "探索モード"}</span>
+      </button>
+
+      {/* Instructions tooltip when active */}
+      {exploreMode && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 48,
+            left: "50%",
+            transform: "translateX(-50%)",
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: "rgba(15,15,15,0.95)",
+            border: "1px solid rgba(34,197,94,0.3)",
+            backdropFilter: "blur(12px)",
+            fontSize: 11,
+            color: "#aaa",
+            whiteSpace: "nowrap",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+          }}
+        >
+          <div style={{ color: "#22c55e", fontWeight: 600, marginBottom: 4 }}>操作方法</div>
+          <div><span style={{ color: "#fff" }}>WASD</span> - 移動</div>
+          <div><span style={{ color: "#fff" }}>↑↓ / Space/Shift</span> - 上昇/下降</div>
+          <div><span style={{ color: "#fff" }}>マウスドラッグ</span> - 視点回転</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────
 
 function UniverseCanvasInner({
@@ -6027,21 +6450,25 @@ export function UniverseCanvas({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [autoRotate, setAutoRotate] = useState(true);
+  const [exploreMode, setExploreMode] = useState(false);
 
   return (
     <QualityProvider>
-      <AutoRotateContext.Provider value={{ autoRotate, setAutoRotate }}>
-        <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100vh", background: "#020202" }}>
-          <UniverseCanvasInner
-            theme={theme}
-            sunPosRef={sunPosRef}
-            skipIntro={skipIntro}
-            containerRef={containerRef}
-          />
-        </div>
-        <AutoRotateToggle />
-        <QualityToggle />
-      </AutoRotateContext.Provider>
+      <ExploreModeContext.Provider value={{ exploreMode, setExploreMode }}>
+        <AutoRotateContext.Provider value={{ autoRotate, setAutoRotate }}>
+          <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100vh", background: "#020202" }}>
+            <UniverseCanvasInner
+              theme={theme}
+              sunPosRef={sunPosRef}
+              skipIntro={skipIntro}
+              containerRef={containerRef}
+            />
+          </div>
+          <ExploreModeToggle />
+          <AutoRotateToggle />
+          <QualityToggle />
+        </AutoRotateContext.Provider>
+      </ExploreModeContext.Provider>
     </QualityProvider>
   );
 }
