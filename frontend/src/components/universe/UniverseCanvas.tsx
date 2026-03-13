@@ -510,6 +510,479 @@ function buildNovaParticles(count: number, minSpd: number, maxSpd: number) {
   return { geo, vels };
 }
 
+// ─── Category Nebula Configuration ──────────────────────
+
+interface NebulaConfig {
+  id: string;
+  position: [number, number, number];
+  color: string;
+  families: Set<string>;
+}
+
+const NEBULA_CONFIGS: NebulaConfig[] = [
+  {
+    id: "cannabis",
+    position: [-7.5, 2.5, 2],
+    color: "#d4a72d",
+    families: CANNABIS_FAMILIES,
+  },
+  {
+    id: "psychedelics",
+    position: [6, 4.3, -4],
+    color: "#a855f7",
+    families: PSYCHEDELIC_FAMILIES,
+  },
+  {
+    id: "others",
+    position: [6.5, -0.2, 0.5],
+    color: "#22d3ee",
+    families: new Set(
+      mockCompounds
+        .map((c) => c.chemical_family ?? "Other")
+        .filter((f) => !CANNABIS_FAMILIES.has(f) && !PSYCHEDELIC_FAMILIES.has(f))
+    ),
+  },
+];
+
+// Get compounds for a nebula category
+function getNebulaCompounds(nebulaId: string): typeof mockCompounds {
+  const config = NEBULA_CONFIGS.find((n) => n.id === nebulaId);
+  if (!config) return [];
+  return mockCompounds.filter((c) => config.families.has(c.chemical_family ?? "Other"));
+}
+
+// ─── Compound Star Shaders ──────────────────────────────
+
+const COMPOUND_STAR_VERT = /* glsl */ `
+  attribute float aSize;
+  attribute float aBrightness;
+  attribute float aPhase;
+  uniform float uTime;
+  uniform float uScale;
+  varying float vBrightness;
+  varying float vPhase;
+
+  void main() {
+    vBrightness = aBrightness;
+    vPhase = aPhase;
+
+    // Twinkling size variation
+    float twinkle = 1.0 + sin(uTime * 3.0 + aPhase * 6.28) * 0.15;
+
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = aSize * uScale * twinkle * (200.0 / -mvPos.z);
+    gl_Position = projectionMatrix * mvPos;
+  }
+`;
+
+const COMPOUND_STAR_FRAG = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uTime;
+  uniform bool uHighQuality;
+  varying float vBrightness;
+  varying float vPhase;
+
+  void main() {
+    vec2 uv = gl_PointCoord - vec2(0.5);
+    float d = length(uv);
+
+    if (d > 0.5) discard;
+
+    // Sharp bright core
+    float core = smoothstep(0.12, 0.0, d);
+
+    // Soft glow falloff
+    float glow = smoothstep(0.5, 0.05, d);
+
+    // Twinkle animation
+    float twinkle = 0.85 + sin(uTime * 4.0 + vPhase * 6.28) * 0.15;
+
+    // Diffraction spikes (high quality only)
+    float spikes = 0.0;
+    if (uHighQuality) {
+      float angle = atan(uv.y, uv.x);
+      float spike4 = pow(abs(cos(angle * 2.0)), 16.0) * smoothstep(0.5, 0.1, d);
+      float spike6 = pow(abs(cos(angle * 3.0)), 24.0) * smoothstep(0.4, 0.08, d);
+      spikes = (spike4 * 0.3 + spike6 * 0.2) * vBrightness;
+    }
+
+    // Combine layers
+    float intensity = (core * 0.7 + glow * 0.3 + spikes) * twinkle * vBrightness;
+
+    // Color with hot white core
+    vec3 col = mix(uColor, vec3(1.0), core * 0.6);
+
+    gl_FragColor = vec4(col, intensity);
+  }
+`;
+
+// ─── Nebula Cloud Component ─────────────────────────────
+
+function NebulaCloud({
+  position,
+  color,
+}: {
+  position: [number, number, number];
+  color: string;
+}) {
+  const { effectiveQuality } = useQuality();
+  const groupRef = useRef<THREE.Group>(null);
+  const glowMap = useMemo(() => makeGlowMap(), []);
+
+  // Quality-scaled particle count
+  const cloudCount = effectiveQuality === "high" ? 12 : 6;
+
+  // Generate cloud sprite positions and properties
+  const clouds = useMemo(() => {
+    const items: Array<{
+      offset: [number, number, number];
+      scale: number;
+      opacity: number;
+      rotSpeed: number;
+    }> = [];
+
+    for (let i = 0; i < cloudCount; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(Math.random() * 2 - 1);
+      const r = 0.8 + Math.random() * 1.2;
+
+      items.push({
+        offset: [
+          Math.sin(phi) * Math.cos(theta) * r,
+          Math.sin(phi) * Math.sin(theta) * r * 0.6,
+          Math.cos(phi) * r,
+        ],
+        scale: 1.5 + Math.random() * 2.0,
+        opacity: 0.02 + Math.random() * 0.02,
+        rotSpeed: (Math.random() - 0.5) * 0.1,
+      });
+    }
+    return items;
+  }, [cloudCount]);
+
+  useFrame(({ clock }) => {
+    if (groupRef.current) {
+      groupRef.current.rotation.y = clock.getElapsedTime() * 0.02;
+    }
+  });
+
+  const nebulaColor = useMemo(() => new THREE.Color(color), [color]);
+
+  return (
+    <group ref={groupRef} position={position}>
+      {clouds.map((cloud, i) => (
+        <sprite
+          key={i}
+          position={cloud.offset}
+          scale={[cloud.scale, cloud.scale, 1]}
+        >
+          <spriteMaterial
+            map={glowMap}
+            color={nebulaColor}
+            transparent
+            opacity={cloud.opacity}
+            toneMapped={false}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </sprite>
+      ))}
+    </group>
+  );
+}
+
+// ─── Compound Stars Component ───────────────────────────
+
+function CompoundStars({
+  nebulaId,
+  position,
+  color,
+  onHover,
+  onLeave,
+  onClick,
+}: {
+  nebulaId: string;
+  position: [number, number, number];
+  color: string;
+  onHover: (compound: typeof mockCompounds[0], worldPos: THREE.Vector3) => void;
+  onLeave: () => void;
+  onClick: (compoundId: string) => void;
+}) {
+  const { effectiveQuality } = useQuality();
+  const pointsRef = useRef<THREE.Points>(null);
+  const compounds = useMemo(() => getNebulaCompounds(nebulaId), [nebulaId]);
+
+  // Risk level to size mapping
+  const riskToSize = useCallback((risk: string): number => {
+    switch (risk) {
+      case "illegal": return 0.22;
+      case "high": return 0.18;
+      case "medium": return 0.14;
+      case "low": return 0.10;
+      case "safe": return 0.08;
+      default: return 0.12;
+    }
+  }, []);
+
+  // Risk level to brightness mapping
+  const riskToBrightness = useCallback((risk: string): number => {
+    switch (risk) {
+      case "illegal": return 1.0;
+      case "high": return 0.85;
+      case "medium": return 0.7;
+      case "low": return 0.55;
+      case "safe": return 0.45;
+      default: return 0.6;
+    }
+  }, []);
+
+  // Build star geometry
+  const { geometry, starPositions } = useMemo(() => {
+    const count = compounds.length;
+    const positions = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    const brightnesses = new Float32Array(count);
+    const phases = new Float32Array(count);
+    const posArray: THREE.Vector3[] = [];
+
+    // Distribute stars in a spherical cluster
+    for (let i = 0; i < count; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(Math.random() * 2 - 1);
+      const r = 0.5 + Math.random() * 1.5;
+
+      const x = Math.sin(phi) * Math.cos(theta) * r;
+      const y = Math.sin(phi) * Math.sin(theta) * r * 0.7;
+      const z = Math.cos(phi) * r;
+
+      positions[i * 3] = x;
+      positions[i * 3 + 1] = y;
+      positions[i * 3 + 2] = z;
+
+      posArray.push(new THREE.Vector3(x, y, z));
+
+      const compound = compounds[i];
+      sizes[i] = riskToSize(compound.risk_level);
+      brightnesses[i] = riskToBrightness(compound.risk_level);
+      phases[i] = Math.random();
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute("aSize", new THREE.Float32BufferAttribute(sizes, 1));
+    geo.setAttribute("aBrightness", new THREE.Float32BufferAttribute(brightnesses, 1));
+    geo.setAttribute("aPhase", new THREE.Float32BufferAttribute(phases, 1));
+
+    return { geometry: geo, starPositions: posArray };
+  }, [compounds, riskToSize, riskToBrightness]);
+
+  // Shader uniforms
+  const uniforms = useMemo(
+    () => ({
+      uColor: { value: new THREE.Color(color) },
+      uTime: { value: 0 },
+      uScale: { value: 1.0 },
+      uHighQuality: { value: effectiveQuality === "high" },
+    }),
+    [color, effectiveQuality]
+  );
+
+  useFrame(({ clock }) => {
+    uniforms.uTime.value = clock.getElapsedTime();
+  });
+
+  // Invisible hit spheres for interaction
+  const isMobile = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+      window.innerWidth < 768;
+  }, []);
+
+  const hitSphereScale = isMobile ? 0.5 : 0.35;
+
+  return (
+    <group position={position}>
+      {/* Star points */}
+      <points ref={pointsRef} geometry={geometry}>
+        <shaderMaterial
+          transparent
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          uniforms={uniforms}
+          vertexShader={COMPOUND_STAR_VERT}
+          fragmentShader={COMPOUND_STAR_FRAG}
+        />
+      </points>
+
+      {/* Invisible hit spheres */}
+      {compounds.map((compound, i) => (
+        <mesh
+          key={compound.id}
+          position={starPositions[i]}
+          onPointerOver={(e) => {
+            e.stopPropagation();
+            document.body.style.cursor = "pointer";
+            // Calculate world position
+            const worldPos = new THREE.Vector3();
+            worldPos.copy(starPositions[i]);
+            worldPos.x += position[0];
+            worldPos.y += position[1];
+            worldPos.z += position[2];
+            onHover(compound, worldPos);
+          }}
+          onPointerOut={(e) => {
+            e.stopPropagation();
+            document.body.style.cursor = "default";
+            onLeave();
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick(compound.id);
+          }}
+        >
+          <sphereGeometry args={[hitSphereScale, 8, 8]} />
+          <meshBasicMaterial transparent opacity={0} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+// ─── Star Tooltip Component ─────────────────────────────
+
+function StarTooltip({
+  compound,
+  worldPos,
+}: {
+  compound: typeof mockCompounds[0] | null;
+  worldPos: THREE.Vector3 | null;
+}) {
+  if (!compound || !worldPos) return null;
+
+  const getRiskColor = (risk: string) => {
+    switch (risk) {
+      case "illegal": return "#ef4444";
+      case "high": return "#f97316";
+      case "medium": return "#eab308";
+      case "low": return "#22c55e";
+      case "safe": return "#22d3ee";
+      default: return "#888";
+    }
+  };
+
+  const getRiskLabel = (risk: string) => {
+    switch (risk) {
+      case "illegal": return "違法";
+      case "high": return "高リスク";
+      case "medium": return "中リスク";
+      case "low": return "低リスク";
+      case "safe": return "安全";
+      default: return "不明";
+    }
+  };
+
+  return (
+    <Html
+      position={[worldPos.x, worldPos.y + 0.6, worldPos.z]}
+      center
+      style={{ pointerEvents: "none", whiteSpace: "nowrap" }}
+    >
+      <div
+        style={{
+          padding: "8px 12px",
+          borderRadius: "8px",
+          backgroundColor: "rgba(6,9,15,0.95)",
+          border: `1px solid ${getRiskColor(compound.risk_level)}40`,
+          boxShadow: `0 4px 20px rgba(0,0,0,0.6), 0 0 15px ${getRiskColor(compound.risk_level)}20`,
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        <div style={{
+          fontSize: "11px",
+          fontWeight: 600,
+          color: "#fff",
+          marginBottom: "4px",
+        }}>
+          {compound.name}
+        </div>
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+        }}>
+          <span style={{
+            width: "6px",
+            height: "6px",
+            borderRadius: "50%",
+            backgroundColor: getRiskColor(compound.risk_level),
+            boxShadow: `0 0 6px ${getRiskColor(compound.risk_level)}80`,
+          }} />
+          <span style={{
+            fontSize: "9px",
+            fontFamily: "ui-monospace, monospace",
+            color: getRiskColor(compound.risk_level),
+          }}>
+            {getRiskLabel(compound.risk_level)}
+          </span>
+        </div>
+        <div style={{
+          fontSize: "7px",
+          fontFamily: "ui-monospace, monospace",
+          color: "rgba(255,255,255,0.3)",
+          marginTop: "4px",
+        }}>
+          クリックで詳細
+        </div>
+      </div>
+    </Html>
+  );
+}
+
+// ─── Category Nebula Container ──────────────────────────
+
+function CategoryNebula({
+  config,
+  onNavigate,
+}: {
+  config: NebulaConfig;
+  onNavigate: (compoundId: string) => void;
+}) {
+  const [hoveredCompound, setHoveredCompound] = useState<typeof mockCompounds[0] | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<THREE.Vector3 | null>(null);
+
+  const handleHover = useCallback((compound: typeof mockCompounds[0], worldPos: THREE.Vector3) => {
+    setHoveredCompound(compound);
+    setTooltipPos(worldPos);
+  }, []);
+
+  const handleLeave = useCallback(() => {
+    setHoveredCompound(null);
+    setTooltipPos(null);
+  }, []);
+
+  const handleClick = useCallback((compoundId: string) => {
+    onNavigate(compoundId);
+  }, [onNavigate]);
+
+  return (
+    <>
+      <NebulaCloud
+        position={config.position}
+        color={config.color}
+      />
+      <CompoundStars
+        nebulaId={config.id}
+        position={config.position}
+        color={config.color}
+        onHover={handleHover}
+        onLeave={handleLeave}
+        onClick={handleClick}
+      />
+      <StarTooltip compound={hoveredCompound} worldPos={tooltipPos} />
+    </>
+  );
+}
+
 // ─── Golden Path (animated growth) ──────────────────────
 
 function GoldenPath({
@@ -5102,6 +5575,11 @@ function Scene({ skipIntro = false }: { theme?: "dark" | "light"; skipIntro?: bo
     if (!travelTarget) setTravelTarget(id);
   };
 
+  // Navigate to compound detail page
+  const handleCompoundClick = useCallback((compoundId: string) => {
+    window.location.href = `/explore/compounds/${compoundId}`;
+  }, []);
+
   const handleArrive = () => {
     if (travelTarget === "blog") {
       window.location.href = "/community";
@@ -5202,6 +5680,15 @@ function Scene({ skipIntro = false }: { theme?: "dark" | "light"; skipIntro?: bo
           </Fragment>
         );
       })}
+
+      {/* Category Nebulae — compound star clusters near each planet */}
+      {NEBULA_CONFIGS.map((config) => (
+        <CategoryNebula
+          key={config.id}
+          config={config}
+          onNavigate={handleCompoundClick}
+        />
+      ))}
 
       {/* Floating Book — path grows last, then book appears */}
       {(() => {
