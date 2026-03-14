@@ -567,10 +567,10 @@ function generateStarPositions(compounds: typeof mockCompounds): [number, number
     let x: number, y: number, z: number;
 
     do {
-      // Scatter across a wide area: x [-18, 18], y [-6, 6], z [-14, 14]
-      x = (rng() - 0.5) * 36;
-      y = (rng() - 0.5) * 12;
-      z = (rng() - 0.5) * 28;
+      // Scatter across the full space — many won't be visible without exploring
+      x = (rng() - 0.5) * 50;
+      y = (rng() - 0.5) * 20;
+      z = (rng() - 0.5) * 40;
       attempts++;
     } while (
       attempts < 50 &&
@@ -622,17 +622,29 @@ function ScatteredStar({
   onClick: (compoundId: string) => void;
 }) {
   const glowRef = useRef<THREE.Sprite>(null);
+  const coreRef = useRef<THREE.Mesh>(null);
   const glowMap = useMemo(() => makeGlowMap(), []);
   const riskColor = getRiskColor(compound.risk_level);
   const threeColor = useMemo(() => new THREE.Color(riskColor), [riskColor]);
+  const [hovered, setHovered] = useState(false);
+  const seed = parseInt(compound.id, 10) || 1;
 
   useFrame(({ clock }) => {
-    if (!glowRef.current) return;
     const t = clock.getElapsedTime();
-    // Gentle twinkle
-    const seed = parseInt(compound.id, 10) || 1;
-    const twinkle = 1 + Math.sin(t * 1.5 + seed * 2.7) * 0.2;
-    glowRef.current.scale.setScalar(0.35 * twinkle);
+
+    // Twinkle animation
+    if (glowRef.current) {
+      const twinkle = 1 + Math.sin(t * 1.5 + seed * 2.7) * 0.25 + Math.sin(t * 3.1 + seed * 1.3) * 0.1;
+      const baseScale = hovered ? 0.6 : 0.3;
+      glowRef.current.scale.setScalar(baseScale * twinkle);
+      glowRef.current.material.opacity = hovered ? 0.9 : 0.6;
+    }
+
+    // Core pulse on hover
+    if (coreRef.current) {
+      const scale = hovered ? 0.07 + Math.sin(t * 4) * 0.015 : 0.035;
+      coreRef.current.scale.setScalar(scale);
+    }
   });
 
   const handleClick = useCallback((e: { stopPropagation: () => void }) => {
@@ -640,89 +652,108 @@ function ScatteredStar({
     onClick(compound.id);
   }, [compound.id, onClick]);
 
+  const handlePointerOver = useCallback((e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    document.body.style.cursor = "pointer";
+    setHovered(true);
+  }, []);
+
+  const handlePointerOut = useCallback((e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    document.body.style.cursor = "default";
+    setHovered(false);
+  }, []);
+
   return (
     <group position={position}>
-      {/* Glow sprite — the "star" */}
-      <sprite ref={glowRef} scale={[0.35, 0.35, 1]}>
+      {/* Glow sprite — the star */}
+      <sprite ref={glowRef} scale={[0.3, 0.3, 1]}>
         <spriteMaterial
           map={glowMap}
           color={threeColor}
           transparent
-          opacity={0.7}
+          opacity={0.6}
           toneMapped={false}
           depthWrite={false}
           blending={THREE.AdditiveBlending}
         />
       </sprite>
 
-      {/* Tiny bright core */}
-      <mesh>
-        <sphereGeometry args={[0.04, 8, 8]} />
+      {/* Bright core */}
+      <mesh ref={coreRef} scale={[0.035, 0.035, 0.035]}>
+        <sphereGeometry args={[1, 8, 8]} />
         <meshBasicMaterial color={threeColor} toneMapped={false} />
       </mesh>
 
-      {/* Invisible click target */}
-      <mesh onClick={handleClick} onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }} onPointerOut={(e) => { e.stopPropagation(); document.body.style.cursor = "default"; }}>
-        <sphereGeometry args={[0.5, 8, 8]} />
+      {/* Invisible hit target */}
+      <mesh
+        onClick={handleClick}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+      >
+        <sphereGeometry args={[0.4, 8, 8]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
 
-      {/* HTML label card */}
-      <Html center style={{ pointerEvents: "none", userSelect: "none" }} position={[0, -0.5, 0]}>
-        <div
-          style={{
-            padding: "6px 10px",
-            borderRadius: "8px",
-            backgroundColor: "rgba(6,9,15,0.9)",
-            border: `1px solid ${riskColor}30`,
-            boxShadow: `0 2px 12px rgba(0,0,0,0.5), 0 0 8px ${riskColor}15`,
-            backdropFilter: "blur(6px)",
-            whiteSpace: "nowrap",
-            minWidth: "50px",
-            textAlign: "center",
-          }}
-        >
-          <div style={{
-            fontSize: "10px",
-            fontWeight: 700,
-            color: "#fff",
-            letterSpacing: "0.5px",
-            marginBottom: "3px",
-          }}>
-            {compound.name}
-          </div>
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "5px",
-            marginBottom: "3px",
-          }}>
-            <span style={{
-              width: "6px",
-              height: "6px",
-              borderRadius: "50%",
-              backgroundColor: riskColor,
-              boxShadow: `0 0 6px ${riskColor}80`,
-              display: "inline-block",
-            }} />
-            <span style={{
-              fontSize: "8px",
-              fontFamily: "ui-monospace, monospace",
-              color: riskColor,
+      {/* Hover popup card */}
+      {hovered && (
+        <Html center style={{ pointerEvents: "none", userSelect: "none" }} position={[0, 0.6, 0]}>
+          <div
+            style={{
+              padding: "8px 12px",
+              borderRadius: "8px",
+              backgroundColor: "rgba(6,9,15,0.95)",
+              border: `1px solid ${riskColor}40`,
+              boxShadow: `0 4px 20px rgba(0,0,0,0.6), 0 0 15px ${riskColor}20`,
+              backdropFilter: "blur(8px)",
+              whiteSpace: "nowrap",
+              minWidth: "60px",
+              textAlign: "center",
+              animation: "fadeIn 0.15s ease-out",
+            }}
+          >
+            <div style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              color: "#fff",
+              letterSpacing: "0.5px",
+              marginBottom: "4px",
             }}>
-              {getRiskLabel(compound.risk_level)}
-            </span>
+              {compound.name}
+            </div>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "5px",
+              marginBottom: "4px",
+            }}>
+              <span style={{
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                backgroundColor: riskColor,
+                boxShadow: `0 0 6px ${riskColor}80`,
+                display: "inline-block",
+              }} />
+              <span style={{
+                fontSize: "9px",
+                fontFamily: "ui-monospace, monospace",
+                color: riskColor,
+              }}>
+                {getRiskLabel(compound.risk_level)}
+              </span>
+            </div>
+            <div style={{
+              fontSize: "7px",
+              fontFamily: "ui-monospace, monospace",
+              color: "rgba(255,255,255,0.35)",
+            }}>
+              クリックで詳細
+            </div>
           </div>
-          <div style={{
-            fontSize: "7px",
-            fontFamily: "ui-monospace, monospace",
-            color: "rgba(255,255,255,0.3)",
-          }}>
-            クリックで詳細
-          </div>
-        </div>
-      </Html>
+        </Html>
+      )}
     </group>
   );
 }
