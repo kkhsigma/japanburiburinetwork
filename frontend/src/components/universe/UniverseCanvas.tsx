@@ -99,25 +99,29 @@ function useDeviceCapabilities() {
     }
 
     // Determine if high-end device
-    // High-end criteria:
-    // - 8+ cores OR
-    // - 8GB+ memory (if available) OR
-    // - High-end GPU keywords (NVIDIA RTX, AMD RX 6000+, Apple M1+, etc.)
+    // STRICT criteria — only truly powerful PCs get high quality.
+    // Requires: not mobile, 12+ cores, max reported memory (8 = browser cap, means 8GB+),
+    // AND a high-end dedicated GPU. All conditions must be met.
     const highEndGpuKeywords = [
-      "RTX", "GTX 10", "GTX 16", "GTX 20", "GTX 30", "GTX 40",
-      "RX 5", "RX 6", "RX 7", "Radeon Pro",
-      "Apple M1", "Apple M2", "Apple M3", "Apple M4",
-      "Intel Iris Xe", "Intel Arc",
-      "Quadro", "Tesla", "A100", "H100"
+      "RTX 30", "RTX 40", "RTX 50",
+      "RX 6", "RX 7", "RX 9",
+      "Apple M2 Pro", "Apple M2 Max", "Apple M2 Ultra",
+      "Apple M3 Pro", "Apple M3 Max", "Apple M3 Ultra",
+      "Apple M4 Pro", "Apple M4 Max", "Apple M4 Ultra",
+      "Quadro RTX", "A100", "H100"
     ];
 
     const hasHighEndGpu = highEndGpuKeywords.some(keyword =>
       gpu.toLowerCase().includes(keyword.toLowerCase())
     );
 
+    // All three conditions must be true (AND logic):
+    // 1. 12+ CPU cores
+    // 2. At least 8GB reported memory (browser caps at 8, so this is the max we can detect)
+    // 3. High-end dedicated GPU
     const isHighEnd = !isMobile && (
-      cores >= 8 ||
-      (memory !== null && memory >= 8) ||
+      cores >= 12 &&
+      (memory !== null && memory >= 8) &&
       hasHighEndGpu
     );
 
