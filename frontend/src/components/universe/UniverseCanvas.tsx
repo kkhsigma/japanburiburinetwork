@@ -544,43 +544,49 @@ function buildNovaParticles(count: number, minSpd: number, maxSpd: number) {
   return { geo, vels };
 }
 
-// ─── Orbital Satellites Configuration ───────────────────
+// ─── Scattered Stars Configuration ──────────────────────
 
-interface SatelliteConfig {
-  id: string;
-  planetPosition: [number, number, number];
-  planetRadius: number;
-  color: string;
-  families: Set<string>;
-  hasRings?: boolean;
+// Generate deterministic scattered positions for all compounds across the map
+function generateStarPositions(compounds: typeof mockCompounds): [number, number, number][] {
+  const positions: [number, number, number][] = [];
+
+  // Planet positions to avoid (with buffer radius)
+  const obstacles = [
+    { pos: [-9, 0.5, 3], r: 3.5 },    // cannabis planet
+    { pos: [7, 2.8, -5], r: 3.5 },     // psychedelics planet
+    { pos: [8, -2.2, 2], r: 3.0 },     // others planet
+    { pos: [0, 0, 0], r: 2.5 },        // origin
+    { pos: [-6, -0.5, -4], r: 2.0 },   // book
+  ];
+
+  // Seeded RNG for deterministic placement
+  const rng = seededRandom(42);
+
+  for (let i = 0; i < compounds.length; i++) {
+    let attempts = 0;
+    let x: number, y: number, z: number;
+
+    do {
+      // Scatter across a wide area: x [-18, 18], y [-6, 6], z [-14, 14]
+      x = (rng() - 0.5) * 36;
+      y = (rng() - 0.5) * 12;
+      z = (rng() - 0.5) * 28;
+      attempts++;
+    } while (
+      attempts < 50 &&
+      obstacles.some((o) => {
+        const dx = x - o.pos[0], dy = y - o.pos[1], dz = z - o.pos[2];
+        return Math.sqrt(dx * dx + dy * dy + dz * dz) < o.r;
+      })
+    );
+
+    positions.push([x, y, z]);
+  }
+
+  return positions;
 }
 
-const SATELLITE_CONFIGS: SatelliteConfig[] = [
-  {
-    id: "cannabis",
-    planetPosition: [-9, 0.5, 3],
-    planetRadius: 1.4,
-    color: "#d4a72d",
-    families: CANNABIS_FAMILIES,
-  },
-  {
-    id: "psychedelics",
-    planetPosition: [7, 2.8, -5],
-    planetRadius: 1.3,
-    color: "#a855f7",
-    families: PSYCHEDELIC_FAMILIES,
-    hasRings: true,
-  },
-];
-
-// Get compounds for a satellite group
-function getSatelliteCompounds(configId: string): typeof mockCompounds {
-  const config = SATELLITE_CONFIGS.find((c) => c.id === configId);
-  if (!config) return [];
-  return mockCompounds.filter((c) => config.families.has(c.chemical_family ?? "Other"));
-}
-
-// ─── Satellite Helper Functions ─────────────────────────
+// ─── Star Helper Functions ──────────────────────────────
 
 function getRiskColor(risk: string): string {
   switch (risk) {
@@ -590,17 +596,6 @@ function getRiskColor(risk: string): string {
     case "low": return "#22c55e";
     case "safe": return "#22d3ee";
     default: return "#888888";
-  }
-}
-
-function getRiskSize(risk: string): number {
-  switch (risk) {
-    case "illegal": return 0.12;
-    case "high": return 0.10;
-    case "medium": return 0.08;
-    case "low": return 0.07;
-    case "safe": return 0.06;
-    default: return 0.07;
   }
 }
 
@@ -615,302 +610,30 @@ function getRiskLabel(risk: string): string {
   }
 }
 
-// ─── Satellite Texture Generator ────────────────────────
+// ─── Single Scattered Star ──────────────────────────────
 
-function generateSatelliteTexture(seed: number, baseColor: THREE.Color, accentColor: THREE.Color): THREE.CanvasTexture {
-  const W = 256, H = 128;
-  const cvs = document.createElement("canvas");
-  cvs.width = W;
-  cvs.height = H;
-  const ctx = cvs.getContext("2d")!;
-  const img = ctx.createImageData(W, H);
-  const d = img.data;
-
-  // Use seed to create unique but stable noise
-  const seedOffset = seed * 127.3;
-  const rand = seededRandom(seed);
-
-  // Pre-generate crater positions (in spherical coords)
-  const numCraters = 8 + Math.floor(rand() * 12);
-  const craterData: Array<{
-    theta: number;
-    phi: number;
-    radius: number;
-    depth: number;
-    rimHeight: number;
-  }> = [];
-
-  for (let i = 0; i < numCraters; i++) {
-    craterData.push({
-      theta: rand() * Math.PI * 2,
-      phi: rand() * Math.PI,
-      radius: 0.08 + rand() * 0.2,
-      depth: 0.3 + rand() * 0.5,
-      rimHeight: 0.1 + rand() * 0.2,
-    });
-  }
-
-  // Pre-generate mineral vein paths
-  const numVeins = 2 + Math.floor(rand() * 4);
-  const veinData: Array<{
-    startTheta: number;
-    startPhi: number;
-    angle: number;
-    width: number;
-    brightness: number;
-  }> = [];
-
-  for (let i = 0; i < numVeins; i++) {
-    veinData.push({
-      startTheta: rand() * Math.PI * 2,
-      startPhi: rand() * Math.PI,
-      angle: rand() * Math.PI,
-      width: 0.02 + rand() * 0.04,
-      brightness: 0.3 + rand() * 0.4,
-    });
-  }
-
-  for (let py = 0; py < H; py++) {
-    for (let px = 0; px < W; px++) {
-      const u = px / W;
-      const v = py / H;
-      const theta = u * Math.PI * 2;
-      const phi = v * Math.PI;
-      const sx = Math.sin(phi) * Math.cos(theta);
-      const sy = Math.cos(phi);
-      const sz = Math.sin(phi) * Math.sin(theta);
-
-      // === BASE TERRAIN ===
-      // Multi-octave rocky surface
-      const terrain1 = fbm3d(sx * 4 + seedOffset, sy * 4, sz * 4, 4);
-      const terrain2 = fbm3d(sx * 8 + seedOffset + 50, sy * 8 + 30, sz * 8, 3);
-      const terrain3 = fbm3d(sx * 16 + seedOffset + 100, sy * 16, sz * 16, 2);
-      const microDetail = fbm3d(sx * 32 + seedOffset + 200, sy * 32, sz * 32, 2);
-
-      // Combine terrain layers
-      let elevation = terrain1 * 0.5 + terrain2 * 0.3 + terrain3 * 0.15 + microDetail * 0.05;
-
-      // === CRATERS ===
-      let craterEffect = 0;
-      let inCraterRim = false;
-      let craterShadow = 1.0;
-
-      for (const crater of craterData) {
-        // Calculate angular distance to crater center
-        const craterSx = Math.sin(crater.phi) * Math.cos(crater.theta);
-        const craterSy = Math.cos(crater.phi);
-        const craterSz = Math.sin(crater.phi) * Math.sin(crater.theta);
-
-        const dist = Math.sqrt(
-          (sx - craterSx) ** 2 + (sy - craterSy) ** 2 + (sz - craterSz) ** 2
-        );
-
-        const normalizedDist = dist / crater.radius;
-
-        if (normalizedDist < 1.0) {
-          // Inside crater - bowl shape
-          const bowlDepth = Math.pow(1 - normalizedDist, 0.5) * crater.depth;
-          craterEffect -= bowlDepth;
-
-          // Crater floor is darker
-          craterShadow *= 0.5 + normalizedDist * 0.5;
-        } else if (normalizedDist < 1.4) {
-          // Crater rim - raised edge
-          const rimFactor = 1 - (normalizedDist - 1.0) / 0.4;
-          craterEffect += rimFactor * crater.rimHeight;
-          inCraterRim = true;
-        } else if (normalizedDist < 2.5) {
-          // Ejecta rays
-          const rayAngle = Math.atan2(sz - craterSz, sx - craterSx);
-          const rayPattern = Math.pow(Math.abs(Math.sin(rayAngle * 6 + seed)), 4);
-          const rayFade = 1 - (normalizedDist - 1.4) / 1.1;
-          craterEffect += rayPattern * rayFade * 0.08;
-        }
-      }
-
-      elevation += craterEffect;
-
-      // === MINERAL VEINS ===
-      let veinBrightness = 0;
-      for (const vein of veinData) {
-        // Sinuous vein path
-        const veinTheta = vein.startTheta + Math.sin(phi * 3 + vein.angle) * 0.5;
-        const veinDist = Math.abs(theta - veinTheta);
-        const wrappedDist = Math.min(veinDist, Math.PI * 2 - veinDist);
-
-        if (wrappedDist < vein.width) {
-          const veinStrength = 1 - wrappedDist / vein.width;
-          // Add noise to vein edges
-          const veinNoise = fbm3d(sx * 40 + seed * 7, sy * 40, sz * 40, 2);
-          if (veinNoise > 0.4) {
-            veinBrightness = Math.max(veinBrightness, veinStrength * vein.brightness);
-          }
-        }
-      }
-
-      // === COLOR CALCULATION ===
-      // Base gray rock color with variation
-      const grayBase = 0.35 + terrain1 * 0.25;
-      let cr = grayBase * 255;
-      let cg = grayBase * 255;
-      let cb = grayBase * 255;
-
-      // Tint with base color
-      const colorInfluence = 0.4 + terrain2 * 0.3;
-      cr = cr * (1 - colorInfluence) + baseColor.r * 255 * colorInfluence;
-      cg = cg * (1 - colorInfluence) + baseColor.g * 255 * colorInfluence;
-      cb = cb * (1 - colorInfluence) + baseColor.b * 255 * colorInfluence;
-
-      // Elevation-based shading (highlights on ridges)
-      const shadeFactor = 0.7 + elevation * 0.6;
-      cr *= shadeFactor;
-      cg *= shadeFactor;
-      cb *= shadeFactor;
-
-      // Apply crater shadow
-      cr *= craterShadow;
-      cg *= craterShadow;
-      cb *= craterShadow;
-
-      // Crater rim highlights
-      if (inCraterRim) {
-        cr = Math.min(cr * 1.2 + 20, 255);
-        cg = Math.min(cg * 1.2 + 18, 255);
-        cb = Math.min(cb * 1.2 + 15, 255);
-      }
-
-      // Mineral vein glow (accent color)
-      if (veinBrightness > 0) {
-        cr = cr * (1 - veinBrightness) + accentColor.r * 255 * veinBrightness;
-        cg = cg * (1 - veinBrightness) + accentColor.g * 255 * veinBrightness;
-        cb = cb * (1 - veinBrightness) + accentColor.b * 255 * veinBrightness;
-        // Add glow
-        cr = Math.min(cr + veinBrightness * 40, 255);
-        cg = Math.min(cg + veinBrightness * 35, 255);
-        cb = Math.min(cb + veinBrightness * 30, 255);
-      }
-
-      // Micro-pitting (small dark spots)
-      const pitting = hash(px * 0.5 + seed, py * 0.5);
-      if (pitting > 0.92) {
-        const pitDepth = (pitting - 0.92) * 8;
-        cr *= 1 - pitDepth * 0.4;
-        cg *= 1 - pitDepth * 0.4;
-        cb *= 1 - pitDepth * 0.4;
-      }
-
-      // Bright specular spots (exposed minerals)
-      const specular = hash(px * 0.3 + seed * 2, py * 0.3 + seed);
-      if (specular > 0.96 && elevation > 0.4) {
-        const specIntensity = (specular - 0.96) * 25;
-        cr = Math.min(cr + specIntensity * 80, 255);
-        cg = Math.min(cg + specIntensity * 75, 255);
-        cb = Math.min(cb + specIntensity * 70, 255);
-      }
-
-      const idx = (py * W + px) * 4;
-      d[idx] = Math.min(255, Math.max(0, cr));
-      d[idx + 1] = Math.min(255, Math.max(0, cg));
-      d[idx + 2] = Math.min(255, Math.max(0, cb));
-      d[idx + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(cvs);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-// ─── Single Orbiting Satellite ──────────────────────────
-
-interface SatelliteOrbitData {
-  radius: number;
-  angle: number;
-  tilt: number;
-  speed: number;
-  yOffset: number;
-}
-
-function OrbitingSatellite({
+function ScatteredStar({
   compound,
-  orbit,
-  planetPosition,
-  color,
-  onHover,
-  onLeave,
+  position,
   onClick,
 }: {
   compound: typeof mockCompounds[0];
-  orbit: SatelliteOrbitData;
-  planetPosition: [number, number, number];
-  color: string;
-  onHover: (compound: typeof mockCompounds[0], worldPos: THREE.Vector3) => void;
-  onLeave: () => void;
+  position: [number, number, number];
   onClick: (compoundId: string) => void;
 }) {
-  const meshRef = useRef<THREE.Mesh>(null);
   const glowRef = useRef<THREE.Sprite>(null);
-  const groupRef = useRef<THREE.Group>(null);
   const glowMap = useMemo(() => makeGlowMap(), []);
-
-  const size = getRiskSize(compound.risk_level);
-  const riskColor = useMemo(() => new THREE.Color(getRiskColor(compound.risk_level)), [compound.risk_level]);
-  const baseColor = useMemo(() => new THREE.Color(color), [color]);
-
-  // Generate unique procedural texture for this satellite
-  const texture = useMemo(() => {
-    const seed = parseInt(compound.id, 10) || compound.name.charCodeAt(0);
-    return generateSatelliteTexture(seed, baseColor, riskColor);
-  }, [compound.id, compound.name, baseColor, riskColor]);
-
-  // Larger hit area for mobile
-  const isMobile = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-      window.innerWidth < 768;
-  }, []);
-  const hitRadius = isMobile ? size * 4 : size * 2.5;
+  const riskColor = getRiskColor(compound.risk_level);
+  const threeColor = useMemo(() => new THREE.Color(riskColor), [riskColor]);
 
   useFrame(({ clock }) => {
-    if (!groupRef.current) return;
+    if (!glowRef.current) return;
     const t = clock.getElapsedTime();
-
-    // Orbital motion
-    const currentAngle = orbit.angle + t * orbit.speed;
-    const x = Math.cos(currentAngle) * orbit.radius;
-    const z = Math.sin(currentAngle) * orbit.radius;
-    const y = orbit.yOffset + Math.sin(currentAngle * 0.5 + orbit.tilt) * 0.15;
-
-    groupRef.current.position.set(x, y, z);
-
-    // Satellite self-rotation (tumbling)
-    if (meshRef.current) {
-      meshRef.current.rotation.x = t * 0.3 + orbit.angle;
-      meshRef.current.rotation.y = t * 0.5 + orbit.tilt;
-    }
-
-    // Gentle pulse on glow
-    if (glowRef.current) {
-      const pulse = 1 + Math.sin(t * 2 + orbit.angle) * 0.1;
-      glowRef.current.scale.setScalar(size * 4 * pulse);
-    }
+    // Gentle twinkle
+    const seed = parseInt(compound.id, 10) || 1;
+    const twinkle = 1 + Math.sin(t * 1.5 + seed * 2.7) * 0.2;
+    glowRef.current.scale.setScalar(0.35 * twinkle);
   });
-
-  const handlePointerOver = useCallback((e: { stopPropagation: () => void }) => {
-    e.stopPropagation();
-    document.body.style.cursor = "pointer";
-    if (groupRef.current) {
-      const worldPos = new THREE.Vector3();
-      groupRef.current.getWorldPosition(worldPos);
-      onHover(compound, worldPos);
-    }
-  }, [compound, onHover]);
-
-  const handlePointerOut = useCallback((e: { stopPropagation: () => void }) => {
-    e.stopPropagation();
-    document.body.style.cursor = "default";
-    onLeave();
-  }, [onLeave]);
 
   const handleClick = useCallback((e: { stopPropagation: () => void }) => {
     e.stopPropagation();
@@ -918,189 +641,115 @@ function OrbitingSatellite({
   }, [compound.id, onClick]);
 
   return (
-    <group position={planetPosition}>
-      <group ref={groupRef}>
-        {/* Glow sprite */}
-        <sprite ref={glowRef} scale={[size * 4, size * 4, 1]}>
-          <spriteMaterial
-            map={glowMap}
-            color={riskColor}
-            transparent
-            opacity={0.6}
-            toneMapped={false}
-            depthWrite={false}
-            blending={THREE.AdditiveBlending}
-          />
-        </sprite>
+    <group position={position}>
+      {/* Glow sprite — the "star" */}
+      <sprite ref={glowRef} scale={[0.35, 0.35, 1]}>
+        <spriteMaterial
+          map={glowMap}
+          color={threeColor}
+          transparent
+          opacity={0.7}
+          toneMapped={false}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </sprite>
 
-        {/* Solid satellite sphere with procedural texture */}
-        <mesh ref={meshRef}>
-          <sphereGeometry args={[size, 24, 16]} />
-          <meshStandardMaterial
-            map={texture}
-            emissive={riskColor}
-            emissiveIntensity={0.3}
-            roughness={0.7}
-            metalness={0.1}
-            bumpScale={0.02}
-          />
-        </mesh>
+      {/* Tiny bright core */}
+      <mesh>
+        <sphereGeometry args={[0.04, 8, 8]} />
+        <meshBasicMaterial color={threeColor} toneMapped={false} />
+      </mesh>
 
-        {/* Invisible hit sphere */}
-        <mesh
-          onPointerOver={handlePointerOver}
-          onPointerOut={handlePointerOut}
-          onClick={handleClick}
+      {/* Invisible click target */}
+      <mesh onClick={handleClick} onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }} onPointerOut={(e) => { e.stopPropagation(); document.body.style.cursor = "default"; }}>
+        <sphereGeometry args={[0.5, 8, 8]} />
+        <meshBasicMaterial transparent opacity={0} />
+      </mesh>
+
+      {/* HTML label card */}
+      <Html center style={{ pointerEvents: "none", userSelect: "none" }} position={[0, -0.5, 0]}>
+        <div
+          style={{
+            padding: "6px 10px",
+            borderRadius: "8px",
+            backgroundColor: "rgba(6,9,15,0.9)",
+            border: `1px solid ${riskColor}30`,
+            boxShadow: `0 2px 12px rgba(0,0,0,0.5), 0 0 8px ${riskColor}15`,
+            backdropFilter: "blur(6px)",
+            whiteSpace: "nowrap",
+            minWidth: "50px",
+            textAlign: "center",
+          }}
         >
-          <sphereGeometry args={[hitRadius, 8, 8]} />
-          <meshBasicMaterial transparent opacity={0} />
-        </mesh>
-      </group>
+          <div style={{
+            fontSize: "10px",
+            fontWeight: 700,
+            color: "#fff",
+            letterSpacing: "0.5px",
+            marginBottom: "3px",
+          }}>
+            {compound.name}
+          </div>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "5px",
+            marginBottom: "3px",
+          }}>
+            <span style={{
+              width: "6px",
+              height: "6px",
+              borderRadius: "50%",
+              backgroundColor: riskColor,
+              boxShadow: `0 0 6px ${riskColor}80`,
+              display: "inline-block",
+            }} />
+            <span style={{
+              fontSize: "8px",
+              fontFamily: "ui-monospace, monospace",
+              color: riskColor,
+            }}>
+              {getRiskLabel(compound.risk_level)}
+            </span>
+          </div>
+          <div style={{
+            fontSize: "7px",
+            fontFamily: "ui-monospace, monospace",
+            color: "rgba(255,255,255,0.3)",
+          }}>
+            クリックで詳細
+          </div>
+        </div>
+      </Html>
     </group>
   );
 }
 
-// ─── Satellite Tooltip Component ────────────────────────
+// ─── Scattered Stars Container ──────────────────────────
 
-function SatelliteTooltip({
-  compound,
-  worldPos,
-}: {
-  compound: typeof mockCompounds[0] | null;
-  worldPos: THREE.Vector3 | null;
-}) {
-  if (!compound || !worldPos) return null;
-
-  const riskColor = getRiskColor(compound.risk_level);
-
-  return (
-    <Html
-      position={[worldPos.x, worldPos.y + 0.4, worldPos.z]}
-      center
-      style={{ pointerEvents: "none", whiteSpace: "nowrap" }}
-    >
-      <div
-        style={{
-          padding: "8px 12px",
-          borderRadius: "8px",
-          backgroundColor: "rgba(6,9,15,0.95)",
-          border: `1px solid ${riskColor}40`,
-          boxShadow: `0 4px 20px rgba(0,0,0,0.6), 0 0 15px ${riskColor}20`,
-          backdropFilter: "blur(8px)",
-        }}
-      >
-        <div style={{
-          fontSize: "11px",
-          fontWeight: 600,
-          color: "#fff",
-          marginBottom: "4px",
-        }}>
-          {compound.name}
-        </div>
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-        }}>
-          <span style={{
-            width: "6px",
-            height: "6px",
-            borderRadius: "50%",
-            backgroundColor: riskColor,
-            boxShadow: `0 0 6px ${riskColor}80`,
-          }} />
-          <span style={{
-            fontSize: "9px",
-            fontFamily: "ui-monospace, monospace",
-            color: riskColor,
-          }}>
-            {getRiskLabel(compound.risk_level)}
-          </span>
-        </div>
-        <div style={{
-          fontSize: "7px",
-          fontFamily: "ui-monospace, monospace",
-          color: "rgba(255,255,255,0.3)",
-          marginTop: "4px",
-        }}>
-          クリックで詳細
-        </div>
-      </div>
-    </Html>
-  );
-}
-
-// ─── Orbital Satellites Container ───────────────────────
-
-function OrbitalSatellites({
-  config,
+function ScatteredStars({
   onNavigate,
 }: {
-  config: SatelliteConfig;
   onNavigate: (compoundId: string) => void;
 }) {
-  const [hoveredCompound, setHoveredCompound] = useState<typeof mockCompounds[0] | null>(null);
-  const [tooltipPos, setTooltipPos] = useState<THREE.Vector3 | null>(null);
-
-  const compounds = useMemo(() => getSatelliteCompounds(config.id), [config.id]);
-
-  // Generate stable orbital data for each compound
-  const orbits = useMemo(() => {
-    const orbitData: SatelliteOrbitData[] = [];
-    const count = compounds.length;
-
-    // For planets with rings, start orbits outside the ring (rings extend to 2.4 * radius)
-    const minOrbitMultiplier = config.hasRings ? 2.6 : 1.8;
-
-    for (let i = 0; i < count; i++) {
-      // Distribute in multiple orbital rings
-      const ring = Math.floor(i / 4); // 4 satellites per ring
-      const indexInRing = i % 4;
-      const baseRadius = config.planetRadius * minOrbitMultiplier + ring * 0.5;
-
-      orbitData.push({
-        radius: baseRadius + (Math.random() - 0.5) * 0.3,
-        angle: (indexInRing / 4) * Math.PI * 2 + ring * 0.4,
-        tilt: (Math.random() - 0.5) * 0.8,
-        speed: 0.15 + Math.random() * 0.2 - ring * 0.03,
-        yOffset: (Math.random() - 0.5) * 0.6,
-      });
-    }
-    return orbitData;
-  }, [compounds.length, config.planetRadius, config.hasRings]);
-
-  const handleHover = useCallback((compound: typeof mockCompounds[0], worldPos: THREE.Vector3) => {
-    setHoveredCompound(compound);
-    setTooltipPos(worldPos);
-  }, []);
-
-  const handleLeave = useCallback(() => {
-    setHoveredCompound(null);
-    setTooltipPos(null);
-  }, []);
-
-  const handleClick = useCallback((compoundId: string) => {
-    onNavigate(compoundId);
-  }, [onNavigate]);
+  const positions = useMemo(() => generateStarPositions(mockCompounds), []);
 
   return (
     <>
-      {compounds.map((compound, i) => (
-        <OrbitingSatellite
+      {mockCompounds.map((compound, i) => (
+        <ScatteredStar
           key={compound.id}
           compound={compound}
-          orbit={orbits[i]}
-          planetPosition={config.planetPosition}
-          color={config.color}
-          onHover={handleHover}
-          onLeave={handleLeave}
-          onClick={handleClick}
+          position={positions[i]}
+          onClick={onNavigate}
         />
       ))}
-      <SatelliteTooltip compound={hoveredCompound} worldPos={tooltipPos} />
     </>
   );
 }
+
 
 // ─── Golden Path (animated growth) ──────────────────────
 
@@ -5974,14 +5623,8 @@ function Scene({ skipIntro = false }: { theme?: "dark" | "light"; skipIntro?: bo
         );
       })}
 
-      {/* Orbiting Satellites — compounds as small moons around planets */}
-      {SATELLITE_CONFIGS.map((config) => (
-        <OrbitalSatellites
-          key={config.id}
-          config={config}
-          onNavigate={handleCompoundClick}
-        />
-      ))}
+      {/* Scattered Stars — compounds as stars spread across the map */}
+      <ScatteredStars onNavigate={handleCompoundClick} />
 
       {/* Floating Book — path grows last, then book appears */}
       {(() => {
