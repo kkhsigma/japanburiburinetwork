@@ -612,6 +612,42 @@ function getRiskLabel(risk: string): string {
 
 // ─── Single Scattered Star ──────────────────────────────
 
+// Ping ring material — expanding ring that fades out
+function PingRing({ color, seed }: { color: THREE.Color; seed: number }) {
+  const ringRef = useRef<THREE.Mesh>(null);
+  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+
+  // Each star pings at its own interval offset by seed
+  const interval = 3 + (seed % 5) * 0.7; // 3–6.5s between pings
+
+  useFrame(({ clock }) => {
+    if (!ringRef.current || !matRef.current) return;
+    const t = clock.getElapsedTime();
+    const phase = ((t + seed * 1.7) % interval) / interval; // 0→1 over one cycle
+
+    // Ring expands from 0.05 to 0.6, fades from 0.5 to 0
+    const scale = 0.05 + phase * 0.55;
+    ringRef.current.scale.set(scale, scale, scale);
+    matRef.current.opacity = Math.max(0, 0.5 * (1 - phase));
+  });
+
+  return (
+    <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[0.9, 1, 32]} />
+      <meshBasicMaterial
+        ref={matRef}
+        color={color}
+        transparent
+        opacity={0.5}
+        side={THREE.DoubleSide}
+        toneMapped={false}
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
+  );
+}
+
 function ScatteredStar({
   compound,
   position,
@@ -621,30 +657,21 @@ function ScatteredStar({
   position: [number, number, number];
   onClick: (compoundId: string) => void;
 }) {
-  const glowRef = useRef<THREE.Sprite>(null);
   const coreRef = useRef<THREE.Mesh>(null);
-  const glowMap = useMemo(() => makeGlowMap(), []);
   const riskColor = getRiskColor(compound.risk_level);
   const threeColor = useMemo(() => new THREE.Color(riskColor), [riskColor]);
   const [hovered, setHovered] = useState(false);
   const seed = parseInt(compound.id, 10) || 1;
 
   useFrame(({ clock }) => {
+    if (!coreRef.current) return;
     const t = clock.getElapsedTime();
 
-    // Twinkle animation
-    if (glowRef.current) {
-      const twinkle = 1 + Math.sin(t * 1.5 + seed * 2.7) * 0.25 + Math.sin(t * 3.1 + seed * 1.3) * 0.1;
-      const baseScale = hovered ? 0.6 : 0.3;
-      glowRef.current.scale.setScalar(baseScale * twinkle);
-      glowRef.current.material.opacity = hovered ? 0.9 : 0.6;
-    }
-
-    // Core pulse on hover
-    if (coreRef.current) {
-      const scale = hovered ? 0.07 + Math.sin(t * 4) * 0.015 : 0.035;
-      coreRef.current.scale.setScalar(scale);
-    }
+    // Subtle brightness pulse
+    const pulse = 0.8 + Math.sin(t * 2 + seed * 1.9) * 0.2;
+    const s = hovered ? 0.06 : 0.03;
+    coreRef.current.scale.setScalar(s);
+    (coreRef.current.material as THREE.MeshBasicMaterial).opacity = pulse;
   });
 
   const handleClick = useCallback((e: { stopPropagation: () => void }) => {
@@ -666,24 +693,17 @@ function ScatteredStar({
 
   return (
     <group position={position}>
-      {/* Glow sprite — the star */}
-      <sprite ref={glowRef} scale={[0.3, 0.3, 1]}>
-        <spriteMaterial
-          map={glowMap}
-          color={threeColor}
-          transparent
-          opacity={0.6}
-          toneMapped={false}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-        />
-      </sprite>
-
-      {/* Bright core */}
-      <mesh ref={coreRef} scale={[0.035, 0.035, 0.035]}>
+      {/* Bright core point */}
+      <mesh ref={coreRef} scale={[0.03, 0.03, 0.03]}>
         <sphereGeometry args={[1, 8, 8]} />
-        <meshBasicMaterial color={threeColor} toneMapped={false} />
+        <meshBasicMaterial color={threeColor} transparent opacity={0.8} toneMapped={false} />
       </mesh>
+
+      {/* Expanding ping ring — the beacon signal */}
+      <PingRing color={threeColor} seed={seed} />
+
+      {/* Second offset ping for richer effect */}
+      <PingRing color={threeColor} seed={seed + 50} />
 
       {/* Invisible hit target */}
       <mesh
@@ -691,13 +711,13 @@ function ScatteredStar({
         onPointerOver={handlePointerOver}
         onPointerOut={handlePointerOut}
       >
-        <sphereGeometry args={[0.4, 8, 8]} />
+        <sphereGeometry args={[0.45, 8, 8]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
 
       {/* Hover popup card */}
       {hovered && (
-        <Html center style={{ pointerEvents: "none", userSelect: "none" }} position={[0, 0.6, 0]}>
+        <Html center style={{ pointerEvents: "none", userSelect: "none" }} position={[0, 0.7, 0]}>
           <div
             style={{
               padding: "8px 12px",
@@ -709,7 +729,6 @@ function ScatteredStar({
               whiteSpace: "nowrap",
               minWidth: "60px",
               textAlign: "center",
-              animation: "fadeIn 0.15s ease-out",
             }}
           >
             <div style={{
